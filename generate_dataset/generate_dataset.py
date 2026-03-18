@@ -1,9 +1,7 @@
-from copyreg import pickle
-
 import pandas as pd
 import numpy as np
 from sklearn.datasets import make_moons, make_swiss_roll
- 
+import pickle
  
 #################################### INPAINTING CORRUPTION ##############################################
 def inpainting_corruption(X: np.ndarray, p: float = 0.2, prevent_zero: bool = True,
@@ -71,8 +69,9 @@ rng_corrupt = np.random.default_rng(123)
 X, _ = make_moons(n_samples=100000, noise=0.1, random_state=42)
 X = normalize(X)
 
+p=0.2
  
-Y, A = inpainting_corruption(X, p=0.2, prevent_zero=False, rng=rng_corrupt)
+Y, A = inpainting_corruption(X, p, prevent_zero=False, rng=rng_corrupt)
 data = {"X": X, "A": A}
 
 with open(f"two_moons_{p}.pkl", "wb") as f:
@@ -84,8 +83,8 @@ with open(f"two_moons_{p}.pkl", "wb") as f:
 x_roll, _ = make_swiss_roll(n_samples=100000, noise=0.5, random_state=42)
 x_roll = normalize(x_roll[:, [0, 2]])
 
- 
-Y_roll, A_roll = inpainting_corruption(x_roll, p=0.2, prevent_zero=False, rng=rng_corrupt)
+p=0.2
+Y_roll, A_roll = inpainting_corruption(x_roll,  prevent_zero=False, rng=rng_corrupt)
 data = {"X": x_roll, "A": A_roll}
 
 with open(f"swiss_roll_p{p}.pkl", "wb") as f:
@@ -108,8 +107,8 @@ def inpainting_corruption_pointwise(X, p=0.2, rng=None):
 
 print("Génération two moons...")
 
-N_DATASETS = 10000
-N_SAMPLES  = 10000
+N_DATASETS = 1000
+N_SAMPLES  = 1000
 NOISE_MIN  = 0.01
 NOISE_MAX  = 0.9
 
