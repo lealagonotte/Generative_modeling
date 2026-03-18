@@ -1,0 +1,242 @@
+"""Module to define components to train a diffusion model following the AmbientDiffusion framework"""
+import pickle as pkl
+import numpy as np
+import os, sys
+from pathlib import Path
+
+import torch
+import torch.nn as nn
+
+class NoiseScheduler(object):
+    """
+    Defines for t ~ U[0,1] the schedule corresponding to the application
+    t -> sigma_t
+    """
+    def __init__(self, mode, **kwargs):
+        # mode is the type of noise schedule to use
+        # different noise schedules might need differnet params
+        # => if mode == "smthng" we call the
+
+        mode = mode.lower()
+        if mode == "interpolation":
+            self._noise_func, self._apply_noise_func = self._init_interpolation(**kwargs)
+        elif mode == "vp":
+            self._noise_func, self._apply_noise_func = self._init_vp(**kwargs)
+        elif mode == "ve":
+            self._noise_func, self._apply_noise_func = self._init_ve(**kwargs)
+        else:
+            raise ValueError(f"Unknown mode '{mode}'. Must be either 'interpolation', 'vp' or 've'.")
+
+    def _init_interpolation(self, sigma_max=1.0, **kwargs):
+        """
+        simple interpolation schedule (uniform t => uniform sigma between 0 and a max_sigma value)
+        returns the noise function and the function to apply noise on batched inputs
+        """
+        def noise_func(t):
+            return t * sigma_max
+
+        def apply_noise(x0, t, eps):
+            sigma_t = noise_func(t)
+            # sigma_t: (batch,) -> unsqueeze for broadcasting with (batch, D)
+            return x0 + sigma_t.unsqueeze(-1) * eps
+
+        return noise_func, apply_noise
+
+    def _init_vp(self, beta_min=0.1, beta_max=20.0, **kwargs):
+        """
+        variance preserving schedule
+        x_t = alpha_t * x0 + sigma_t * eps
+        where log(alpha_t) = -1/2 * integral_0^t beta(s) ds
+        and sigma_t = sqrt(1 - alpha_t^2)
+        """
+        def noise_func(t):
+            log_mean_coeff = -0.5 * (beta_min * t + 0.5 * (beta_max - beta_min) * t ** 2)
+            alpha_t = torch.exp(log_mean_coeff)
+            sigma_t = torch.sqrt(1.0 - alpha_t ** 2)
+            return sigma_t
+
+        def apply_noise(x0, t, eps):
+            log_mean_coeff = -0.5 * (beta_min * t + 0.5 * (beta_max - beta_min) * t ** 2)
+            alpha_t = torch.exp(log_mean_coeff)
+            sigma_t = torch.sqrt(1.0 - alpha_t ** 2)
+            return alpha_t.unsqueeze(-1) * x0 + sigma_t.unsqueeze(-1) * eps
+
+        return noise_func, apply_noise
+
+    def _init_ve(self, sigma_min=0.01, sigma_max=1.0, **kwargs):
+        """
+        variance exploding schedule
+        sigma(t) = sigma_min * (sigma_max / sigma_min)^t
+        x_t = x0 + sigma_t * eps
+        """
+        def noise_func(t):
+            return sigma_min * (sigma_max / sigma_min) ** t
+
+        def apply_noise(x0, t, eps):
+            sigma_t = noise_func(t)
+            return x0 + sigma_t.unsqueeze(-1) * eps
+
+        return noise_func, apply_noise
+
+    def __call__(self, t):
+        return self._noise_func(t)
+
+    def apply_noise(self, x0, t, eps):
+        return self._apply_noise_func(x0, t, eps)
+
+class FurtherCorrupter(object):
+    """
+    Defines for a corruption matrix A the corruption A' = BA
+    """
+    def __init__(self, mode, **kwargs):
+        # mode is the type of corruption, either inpainting or gaussian measurements (see ..generate_dataset/generated_dataset.py)
+        # different noise schedules might need differnet params
+        # => if mode == "smthng" we call the
+
+        mode = mode.lower()
+        if mode == "inpainting":
+            self.operator_func, self.apply_operator_func = self._init_inpainting(**kwargs)
+        elif mode == "gaussian":
+            self.operator_func, self.apply_operator_func = self._init_gaussian(**kwargs)
+        else:
+            raise ValueError(f"Unknown mode '{mode}'. Must be either 'inpainting' or 'gaussian'.")
+
+    def _init_inpainting(self, p=0.5, **kwargs):
+        """
+        inpainting further corruption: B is a random binary mask with probability p of zeroing each entry.
+        A' = A * B (element-wise). apply: A' * x (element-wise).
+        """
+        def operator_func(A):
+            # A: (batch, D) binary mask
+            B = (torch.rand_like(A) > p).float()
+            return A * B
+
+        def apply_operator_func(further_A, x):
+            # further_A: (batch, D), x: (batch, D)
+            return further_A * x
+
+        return operator_func, apply_operator_func
+
+    def _init_gaussian(self, m_prime=1, **kwargs):
+        """
+        gaussian measurements further corruption: B ~ N(0,I) of shape (batch, m', m).
+        A' = B @ A. apply: A' @ x.
+        """
+        def operator_func(A):
+            # A: (batch, m, d)
+            batch, m, d = A.shape
+            B = torch.randn(batch, m_prime, m, device=A.device)
+            return torch.bmm(B, A)  # (batch, m_prime, d)
+
+        def apply_operator_func(further_A, x):
+            # further_A: (batch, m', d), x: (batch, d)
+            return torch.bmm(further_A, x.unsqueeze(-1)).squeeze(-1)
+
+        return operator_func, apply_operator_func
+
+    def get_operator(self, A):
+        return self.operator_func(A)
+
+    def apply_operator(self, further_A, x):
+        return self.apply_operator_func(further_A, x)
+
+class Sampler(object):
+    """
+    Sampling scheme to solve the SDE and sample from p0
+    """
+    def __init__(self, mode, **kwargs):
+        mode = mode.lower()
+        if mode == "fms": # fixed mask sampling
+            self.sampling_step, self.define_steps = self._init_fixed_mask_sampling(**kwargs)
+        else:
+            raise ValueError(f"Unknown mode '{mode}'. Must be 'fms'.")
+
+    def _init_fixed_mask_sampling(self, **kwargs):
+
+        def define_steps(n_steps):
+            """
+            Defines the list of time steps from T=1 down to near 0
+            """
+            return torch.linspace(1.0, 1e-4, n_steps)
+
+        def sampling_step(x_t, A, t_curr, t_next, module, noise_scheduler):
+            """
+            Reverse SDE step (Euler-Maruyama) following Eq. 3.3.
+
+            1. Predict x0: pred_x0 = module(A, x_t, t_curr)
+            2. Score: s = (pred_x0 - x_t) / sigma_t^2
+            3. Step: x_next = x_t + (sigma_t^2 - sigma_next^2) * s + sqrt(sigma_t^2 - sigma_next^2) * z
+            """
+            sigma_t = noise_scheduler(t_curr)
+            sigma_next = noise_scheduler(t_next)
+
+            # Ensure shapes for broadcasting: (batch,) -> (batch, 1)
+            if sigma_t.dim() == 0:
+                sigma_t = sigma_t.unsqueeze(0)
+            if sigma_next.dim() == 0:
+                sigma_next = sigma_next.unsqueeze(0)
+
+            with torch.no_grad():
+                pred_x0 = module(A, x_t, t_curr)
+
+            sigma_t_sq = (sigma_t ** 2).unsqueeze(-1)
+            sigma_next_sq = (sigma_next ** 2).unsqueeze(-1)
+
+            score = (pred_x0 - x_t) / sigma_t_sq
+            diff_sq = sigma_t_sq - sigma_next_sq
+
+            z = torch.randn_like(x_t)
+            noise_scale = torch.sqrt(torch.clamp(diff_sq, min=0.0))
+
+            x_next = x_t + diff_sq * score + noise_scale * z
+
+            return x_next
+
+        return sampling_step, define_steps
+
+    def step(self, *args):
+        return self.sampling_step(*args)
+
+    def sample(self, shape, n_steps, A, module, noise_scheduler):
+        """
+        Generate samples by running the reverse SDE.
+
+        Args:
+            shape: (n_samples, D) shape of the output
+            n_steps: number of discretization steps
+            A: corruption operator for sampling (e.g. identity mask = all ones)
+            module: trained denoiser
+            noise_scheduler: NoiseScheduler instance
+        """
+        device = next(module.parameters()).device
+        timesteps = self.define_steps(n_steps).to(device)
+
+        x_t = torch.randn(shape, device=device)
+
+        for i in range(len(timesteps) - 1):
+            t_curr = timesteps[i].expand(shape[0])
+            t_next = timesteps[i + 1].expand(shape[0])
+            x_t = self.sampling_step(x_t, A, t_curr, t_next, module, noise_scheduler)
+
+        return x_t
+
+class AmbientLoss(nn.Module):
+    """
+    Defines the ambient diffusion objective
+    Jcorr = 1/2 * E[||Ax0 - Ah(A', A'x_t, t)||^2]
+
+    => Naive if A' = A
+    => Eq.2 if A' = BA
+    """
+    def __init__(self, apply_opertor_func):
+        super().__init__()
+        self.apply_opertor_func = apply_opertor_func
+
+    def forward(self, x0, predicted_x0, A):
+        Ax0 = self.apply_opertor_func(A, x0)
+
+        A_predx0 = self.apply_opertor_func(A, predicted_x0)
+
+        diff = Ax0 - A_predx0
+        per_sample_loss = torch.sum(diff ** 2, dim=-1)  # (batch,)
+        return 0.5 * torch.mean(per_sample_loss)
