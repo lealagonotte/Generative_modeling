@@ -61,6 +61,22 @@ pd.DataFrame({
     'x1': Y[:, 0], 'x2': Y[:, 1],
     'a1': A[:, 0], 'a2': A[:, 1]
 }).to_csv("two_moons_corrupted.csv", index=False)
+
+
+def compressed_sensing_corruption(X, m=2, rng=None):
+    """
+    Corruption Compressed Sensing (Ambient Diffusion, Corollary A.2).
+    A ∈ R^(m x d) : m lignes iid N(0, I_d) → y = A·x ∈ R^m
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+    
+    N, d = X.shape
+    
+    A_matrices = rng.standard_normal(size=(N, m, d))          # (N, m, d)
+    Y = np.einsum('nmd,nd->nm', A_matrices, X)                # (N, m)
+    
+    return Y, A_matrices
  
  
 ####################################### Swiss roll 2D ################################################
@@ -75,31 +91,43 @@ pd.DataFrame({
 }).to_csv("swiss_roll_corrupted.csv", index=False)
  
  
-########################################### N two moons datasets with different noise levels ########################################
+def inpainting_corruption_pointwise(X, p=0.2, rng=None):
+    if rng is None:
+        rng = np.random.default_rng()
+    
+    N = X.shape[0]
+    mask = (rng.uniform(0, 1, size=N) >= p).astype(int)  # 1=intact, 0=corrompu
+    
+    Y = X * mask[:, None]  # points corrompus mis à zéro
+    A = np.stack([mask, mask], axis=1)  # a1=a2=mask
+    
+    return Y, A
+
+################################### DATASET (N,2) ###############################################
+
 print("Génération two moons...")
- 
+
 N_DATASETS = 10000
 N_SAMPLES  = 10000
 NOISE_MIN  = 0.01
 NOISE_MAX  = 0.9
- 
+
 rng_noise = np.random.default_rng(42)
 noise_levels = rng_noise.uniform(NOISE_MIN, NOISE_MAX, size=N_DATASETS)
- 
-# RNG dédié à la corruption des boucles (indépendant de noise_levels)
+
 rng_corrupt_loop = np.random.default_rng(456)
- 
+
 chunks, chunks_corrupted = [], []
 for i, noise in enumerate(noise_levels):
     X, _ = make_moons(n_samples=N_SAMPLES, noise=noise, random_state=i)
     X = normalize(X)
- 
+
     df = pd.DataFrame(X, columns=['x1', 'x2'])
     df['dataset_id'] = i
     df['noise']      = round(noise, 6)
     chunks.append(df)
- 
-    Y, A = inpainting_corruption(X, p=0.2, prevent_zero=False, rng=rng_corrupt_loop)
+
+    Y, A = inpainting_corruption_pointwise(X, p=0.2, rng=rng_corrupt_loop)
     df_corrupted = pd.DataFrame({
         'x1': Y[:, 0], 'x2': Y[:, 1],
         'a1': A[:, 0], 'a2': A[:, 1]
@@ -107,29 +135,28 @@ for i, noise in enumerate(noise_levels):
     df_corrupted['dataset_id'] = i
     df_corrupted['noise']      = round(noise, 6)
     chunks_corrupted.append(df_corrupted)
- 
+
     if (i + 1) % 10000 == 0:
         print(f"  {i+1}/{N_DATASETS} datasets générés...")
- 
+
 pd.concat(chunks, ignore_index=True).to_csv("two_moons_all.csv", index=False)
 pd.concat(chunks_corrupted, ignore_index=True).to_csv("two_moons_all_corrupted.csv", index=False)
 print("two_moons_all.csv / two_moons_all_corrupted.csv\n")
- 
- 
-############################################ N swiss roll datasets with different noise levels ########################################
+
+
 print("Génération swiss roll...")
- 
+
 chunks, chunks_corrupted = [], []
 for i, noise in enumerate(noise_levels):
     X, _ = make_swiss_roll(n_samples=N_SAMPLES, noise=noise * 10, random_state=i)
     X = normalize(X[:, [0, 2]])
- 
+
     df = pd.DataFrame(X, columns=['x1', 'x2'])
     df['dataset_id'] = i
     df['noise']      = round(noise, 6)
     chunks.append(df)
- 
-    Y, A = inpainting_corruption(X, p=0.2, prevent_zero=False, rng=rng_corrupt_loop)
+
+    Y, A = inpainting_corruption_pointwise(X, p=0.2, rng=rng_corrupt_loop)
     df_corrupted = pd.DataFrame({
         'x1': Y[:, 0], 'x2': Y[:, 1],
         'a1': A[:, 0], 'a2': A[:, 1]
@@ -137,10 +164,10 @@ for i, noise in enumerate(noise_levels):
     df_corrupted['dataset_id'] = i
     df_corrupted['noise']      = round(noise, 6)
     chunks_corrupted.append(df_corrupted)
- 
+
     if (i + 1) % 10000 == 0:
         print(f"  {i+1}/{N_DATASETS}...")
- 
+
 pd.concat(chunks, ignore_index=True).to_csv("swiss_roll_all.csv", index=False)
 pd.concat(chunks_corrupted, ignore_index=True).to_csv("swiss_roll_all_corrupted.csv", index=False)
 print("swiss_roll_all.csv / swiss_roll_all_corrupted.csv")
