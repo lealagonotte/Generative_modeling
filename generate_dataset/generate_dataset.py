@@ -1,3 +1,5 @@
+from copyreg import pickle
+
 import pandas as pd
 import numpy as np
 from sklearn.datasets import make_moons, make_swiss_roll
@@ -42,27 +44,6 @@ def inpainting_corruption(X: np.ndarray, p: float = 0.2, prevent_zero: bool = Tr
     Y = X * A
     return Y, A
  
- 
-def normalize(X):
-    return (X - X.mean(axis=0)) / X.std(axis=0)
- 
- 
-# RNG dédié à la corruption (indépendant de la génération)
-rng_corrupt = np.random.default_rng(123)
- 
- 
-#################################### Two moons ##############################################
-X, _ = make_moons(n_samples=100000, noise=0.1, random_state=42)
-X = normalize(X)
-pd.DataFrame(X, columns=['x1', 'x2']).to_csv("two_moons.csv", index=False)
- 
-Y, A = inpainting_corruption(X, p=0.2, prevent_zero=False, rng=rng_corrupt)
-pd.DataFrame({
-    'x1': Y[:, 0], 'x2': Y[:, 1],
-    'a1': A[:, 0], 'a2': A[:, 1]
-}).to_csv("two_moons_corrupted.csv", index=False)
-
-
 def compressed_sensing_corruption(X, m=2, rng=None):
     """
     Corruption Compressed Sensing (Ambient Diffusion, Corollary A.2).
@@ -78,19 +59,39 @@ def compressed_sensing_corruption(X, m=2, rng=None):
     
     return Y, A_matrices
  
+def normalize(X):
+    return (X - X.mean(axis=0)) / X.std(axis=0)
+ 
+ 
+# RNG dédié à la corruption (indépendant de la génération)
+rng_corrupt = np.random.default_rng(123)
+ 
+ 
+#################################### Two moons ##############################################
+X, _ = make_moons(n_samples=100000, noise=0.1, random_state=42)
+X = normalize(X)
+
+ 
+Y, A = inpainting_corruption(X, p=0.2, prevent_zero=False, rng=rng_corrupt)
+data = {"X": X, "A": A}
+
+with open(f"two_moons_{p}.pkl", "wb") as f:
+    pickle.dump(data, f)
+
+ 
  
 ####################################### Swiss roll 2D ################################################
 x_roll, _ = make_swiss_roll(n_samples=100000, noise=0.5, random_state=42)
 x_roll = normalize(x_roll[:, [0, 2]])
-pd.DataFrame(x_roll, columns=['x1', 'x2']).to_csv("swiss_roll.csv", index=False)
+
  
 Y_roll, A_roll = inpainting_corruption(x_roll, p=0.2, prevent_zero=False, rng=rng_corrupt)
-pd.DataFrame({
-    'x1': Y_roll[:, 0], 'x2': Y_roll[:, 1],
-    'a1': A_roll[:, 0], 'a2': A_roll[:, 1]
-}).to_csv("swiss_roll_corrupted.csv", index=False)
+data = {"X": x_roll, "A": A_roll}
+
+with open(f"swiss_roll_p{p}.pkl", "wb") as f:
+    pickle.dump(data, f)
  
- 
+ ################################# Corruption pour les datasets de spirale ###########################################
 def inpainting_corruption_pointwise(X, p=0.2, rng=None):
     if rng is None:
         rng = np.random.default_rng()
@@ -112,62 +113,52 @@ N_SAMPLES  = 10000
 NOISE_MIN  = 0.01
 NOISE_MAX  = 0.9
 
+p = 0.2
+
 rng_noise = np.random.default_rng(42)
 noise_levels = rng_noise.uniform(NOISE_MIN, NOISE_MAX, size=N_DATASETS)
 
-rng_corrupt_loop = np.random.default_rng(456)
-
-chunks, chunks_corrupted = [], []
+chunks = []
 for i, noise in enumerate(noise_levels):
     X, _ = make_moons(n_samples=N_SAMPLES, noise=noise, random_state=i)
     X = normalize(X)
-
-    df = pd.DataFrame(X, columns=['x1', 'x2'])
-    df['dataset_id'] = i
-    df['noise']      = round(noise, 6)
-    chunks.append(df)
-
-    Y, A = inpainting_corruption_pointwise(X, p=0.2, rng=rng_corrupt_loop)
-    df_corrupted = pd.DataFrame({
-        'x1': Y[:, 0], 'x2': Y[:, 1],
-        'a1': A[:, 0], 'a2': A[:, 1]
-    })
-    df_corrupted['dataset_id'] = i
-    df_corrupted['noise']      = round(noise, 6)
-    chunks_corrupted.append(df_corrupted)
+    chunks.append(X)
 
     if (i + 1) % 10000 == 0:
         print(f"  {i+1}/{N_DATASETS} datasets générés...")
 
-pd.concat(chunks, ignore_index=True).to_csv("two_moons_all.csv", index=False)
-pd.concat(chunks_corrupted, ignore_index=True).to_csv("two_moons_all_corrupted.csv", index=False)
-print("two_moons_all.csv / two_moons_all_corrupted.csv\n")
+# Concatenation
+X_all = np.concatenate(chunks, axis=0)  # (N_DATASETS * N_SAMPLES, 2)
 
+# Corruption sur le dataset complet
+rng_corrupt = np.random.default_rng(456)
+Y_all, A_all = inpainting_corruption_pointwise(X_all, p=p, rng=rng_corrupt)
 
+data = {"X": X_all, "A": A_all}
+
+with open(f"two_moons_all_p{p}.pkl", "wb") as f:
+    pickle.dump(data, f)
+
+#################################### DATASET swiss roll (N,2) ###############################################
 print("Génération swiss roll...")
 
-chunks, chunks_corrupted = [], []
+p = 0.2
+
+chunks = []
 for i, noise in enumerate(noise_levels):
     X, _ = make_swiss_roll(n_samples=N_SAMPLES, noise=noise * 10, random_state=i)
     X = normalize(X[:, [0, 2]])
-
-    df = pd.DataFrame(X, columns=['x1', 'x2'])
-    df['dataset_id'] = i
-    df['noise']      = round(noise, 6)
-    chunks.append(df)
-
-    Y, A = inpainting_corruption_pointwise(X, p=0.2, rng=rng_corrupt_loop)
-    df_corrupted = pd.DataFrame({
-        'x1': Y[:, 0], 'x2': Y[:, 1],
-        'a1': A[:, 0], 'a2': A[:, 1]
-    })
-    df_corrupted['dataset_id'] = i
-    df_corrupted['noise']      = round(noise, 6)
-    chunks_corrupted.append(df_corrupted)
+    chunks.append(X)
 
     if (i + 1) % 10000 == 0:
         print(f"  {i+1}/{N_DATASETS}...")
 
-pd.concat(chunks, ignore_index=True).to_csv("swiss_roll_all.csv", index=False)
-pd.concat(chunks_corrupted, ignore_index=True).to_csv("swiss_roll_all_corrupted.csv", index=False)
-print("swiss_roll_all.csv / swiss_roll_all_corrupted.csv")
+X_all = np.concatenate(chunks, axis=0)  # (N_DATASETS * N_SAMPLES, 2)
+
+rng_corrupt = np.random.default_rng(456)
+Y_all, A_all = inpainting_corruption_pointwise(X_all, p=p, rng=rng_corrupt)
+
+data = {"X": X_all, "A": A_all}
+
+with open(f"swiss_roll_all_p{p}.pkl", "wb") as f:
+    pickle.dump(data, f)
