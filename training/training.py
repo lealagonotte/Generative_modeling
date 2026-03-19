@@ -157,9 +157,9 @@ def main():
     if args.schedule == "interpolation":
         noise_scheduler = NoiseScheduler(args.schedule, sigma_max=args.sigma_max)
     elif args.schedule == "vp":
-        noise_scheduler = NoiseScheduler(args.schedule, beta_min=args.beta_min, beta_max=args.beta_min)
+        noise_scheduler = NoiseScheduler(args.schedule, beta_min=args.beta_min, beta_max=args.beta_max)
     elif args.schedule == "ve":
-        noise_scheduler = NoiseScheduler(args.schedule, sigma_max=args.sigma_max, sigma_max=args.sigma_min)
+        noise_scheduler = NoiseScheduler(args.schedule, sigma_max=args.sigma_max, sigma_min=args.sigma_min)
     else:
         raise ValueError(f"Unknown noise schedule {args.schedule}. Must be eitehr 'interpolation', 'vp' or 've'.")
     
