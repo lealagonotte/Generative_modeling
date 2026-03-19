@@ -6,7 +6,7 @@ import pickle
 import numpy as np
 from sklearn.datasets import make_moons, make_swiss_roll
 
-from utils import normalize, inpainting_corruption, inpainting_corruption_pointwise
+from utils import normalize, inpainting_corruption, inpainting_corruption_pointwise, compressed_sensing_corruption
 
 
 def generate_data(dataset, n_samples, noise, seed):
@@ -31,8 +31,10 @@ def main():
     parser.add_argument("--n_samples", type=int, default=100000,
                         help="Number of points to generate")
     parser.add_argument("--corruption", type=str, default="inpainting",
-                        choices=["inpainting", "pointwise"],
+                        choices=["inpainting", "pointwise", "gaussian"],
                         help="Corruption type")
+    parser.add_argument("--m", type=float, default=2,
+                        help="Number of observed measurements")
     parser.add_argument("--p", type=float, default=0.2,
                         help="Corruption probability")
     parser.add_argument("--noise", type=float, default=None,
@@ -55,14 +57,20 @@ def main():
 
     # Apply corruption
     rng = np.random.default_rng(args.seed + 1)
-    if args.corruption == "inpainting":
+    corruption = args.corruption
+    if corruption == "inpainting":
         Y, A = inpainting_corruption(X, p=args.p, prevent_zero=args.prevent_zero, rng=rng)
-    else:
+    elif corruption == "pointwise":
         Y, A = inpainting_corruption_pointwise(X, p=args.p, rng=rng)
+    elif corruption == "gaussian":
+        Y, A = compressed_sensing_corruption(X, m=args.m, rng=rng)
 
     # Save
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
-    data = {"X": X, "A": A}
+    if corruption == "pointwise":
+        corruption = "inpainting"
+    
+    data = {"type": corruption,"X": X, "A": A}
     with open(args.output, "wb") as f:
         pickle.dump(data, f)
 

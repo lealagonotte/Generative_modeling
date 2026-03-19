@@ -20,6 +20,7 @@ def load_dataset(path, batch_size=256, val_split=0.1):
 
     X = torch.tensor(data["X"], dtype=torch.float32)
     A = torch.tensor(data["A"], dtype=torch.float32)
+    dataset_type = data["type"]
 
     n = X.shape[0]
     perm = torch.randperm(n)
@@ -34,7 +35,7 @@ def load_dataset(path, batch_size=256, val_split=0.1):
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
-    return train_loader, val_loader
+    return train_loader, val_loader, dataset_type
 
 
 def batch_step(module: nn.Module,
