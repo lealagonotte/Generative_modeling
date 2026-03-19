@@ -21,8 +21,8 @@ def viz_sample_2D(
     n_samples=1000,
     n_steps=100,
     output_path="sampling.gif",
-    fps=15,
-    n_frames=50,
+    fps=16,
+    n_frames=None,
     ref_data=None,
     xlim=None,
     ylim=None,
@@ -43,6 +43,9 @@ def viz_sample_2D(
         xlim            : optional (xmin, xmax) tuple
         ylim            : optional (ymin, ymax) tuple
     """
+    if n_frames is None:
+        n_frames = min(int(0.5*n_steps), 120)
+
     device = next(module.parameters()).device
     shape = (n_samples, 2)
 
@@ -77,7 +80,7 @@ def viz_sample_2D(
 
     # Color palette
     sample_color = sns.color_palette("mako", as_cmap=False, n_colors=3)[1]
-    ref_color = "#d3d3d3"
+    ref_color = "#8b8989"
 
     # Build animation
     fig, ax = plt.subplots(figsize=(6, 6))
@@ -93,14 +96,17 @@ def viz_sample_2D(
             ax.scatter(
                 ref_data[:, 0], ref_data[:, 1],
                 s=1, alpha=0.15, c=ref_color, rasterized=True,
+                label="Reference"
             )
 
         # Current sample points
         ax.scatter(
             points[:, 0], points[:, 1],
-            s=8, alpha=0.7, c=[sample_color], edgecolors="none",
+            s=8, alpha=0.5, c=[sample_color], edgecolors="none",
+            label="Sampled"
         )
 
+        ax.legend()
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
         ax.set_aspect("equal")
