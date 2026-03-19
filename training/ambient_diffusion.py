@@ -7,6 +7,13 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 
+BASE_DIR = str(Path(__file__).resolve().parent.parent)
+sys.path.append(BASE_DIR)
+
+from generate_dataset.utils import inpainting_corruption, inpainting_corruption_pointwise, compressed_sensing_corruption
+
+
+
 class NoiseScheduler(object):
     """
     Defines for t ~ U[0,1] the schedule corresponding to the application
@@ -95,9 +102,11 @@ class FurtherCorrupter(object):
 
         mode = mode.lower()
         if mode == "inpainting":
-            self.operator_func, self.apply_operator_func = self._init_inpainting(**kwargs)
+            self.init_operator_func, self.operator_func, self.apply_operator_func = self._init_inpainting(**kwargs)
+        elif mode == "inpainting_pw":
+            self.init_operator_func, self.operator_func, self.apply_operator_func = self._init_inpainting_pw(**kwargs)
         elif mode == "gaussian":
-            self.operator_func, self.apply_operator_func = self._init_gaussian(**kwargs)
+            self.init_operator_func, self.operator_func, self.apply_operator_func = self._init_gaussian(**kwargs)
         else:
             raise ValueError(f"Unknown mode '{mode}'. Must be either 'inpainting' or 'gaussian'.")
 
@@ -106,6 +115,25 @@ class FurtherCorrupter(object):
         inpainting further corruption: B is a random binary mask with probability p of zeroing each entry.
         A' = A * B (element-wise). apply: A' * x (element-wise).
         """
+        if 'seed' in kwargs.keys():
+            seed = kwargs['seed']
+        else:
+            seed = 1234
+        rng = np.random.default_rng(seed + 1) 
+
+        if 'prevent_zero' in kwargs.keys():
+            prevent_zero = kwargs['prevent_zero']
+        else:
+            prevent_zero = True
+
+        def init_operator_func(shape, device):
+            X = np.zeros(shape)
+            _, A = inpainting_corruption(X, 
+                                         p=p, 
+                                         prevent_zero=prevent_zero, 
+                                         rng=rng)  
+            return torch.from_numpy(A).to(device)
+
         def operator_func(A):
             # A: (batch, D) binary mask
             B = (torch.rand_like(A) > p).float()
@@ -115,13 +143,60 @@ class FurtherCorrupter(object):
             # further_A: (batch, D), x: (batch, D)
             return further_A * x
 
-        return operator_func, apply_operator_func
+        return init_operator_func, operator_func, apply_operator_func
+
+    def _init_inpainting_pw(self, p=0.5, **kwargs):
+        """
+        inpainting further corruption: B is a random binary mask with probability p of zeroing each entry.
+        A' = A * B (element-wise). apply: A' * x (element-wise).
+        """
+        if 'seed' in kwargs.keys():
+            seed = kwargs['seed']
+        else:
+            seed = 1234
+        rng = np.random.default_rng(seed + 1) 
+
+        def init_operator_func(shape, device):
+            X = np.zeros(shape)
+            _, A = inpainting_corruption_pointwise(X, 
+                                         p=p, 
+                                         rng=rng)  
+            return torch.from_numpy(A).to(device)
+
+        def operator_func(A):
+            # A: (batch, D) binary mask
+            B = (torch.rand_like(A) > p).float()
+            return A * B
+
+        def apply_operator_func(further_A, x):
+            # further_A: (batch, D), x: (batch, D)
+            return further_A * x
+
+        return init_operator_func, operator_func, apply_operator_func
 
     def _init_gaussian(self, m_prime=1, **kwargs):
         """
         gaussian measurements further corruption: B ~ N(0,I) of shape (batch, m', m).
         A' = B @ A. apply: A' @ x.
         """
+        if 'seed' in kwargs.keys():
+            seed = kwargs['seed']
+        else:
+            seed = 1234
+        rng = np.random.default_rng(seed + 1) 
+
+        if 'm' in kwargs.keys():
+            m = kwargs["m"]
+        else:
+            m = 2
+
+        def init_operator_func(shape, device):
+            X = np.zeros(shape)
+            _, A = compressed_sensing_corruption(X, 
+                                         m=m, 
+                                         rng=rng)  
+            return torch.from_numpy(A).to(device)
+        
         def operator_func(A):
             # A: (batch, m, d)
             batch, m, d = A.shape
@@ -132,8 +207,11 @@ class FurtherCorrupter(object):
             # further_A: (batch, m', d), x: (batch, d)
             return torch.bmm(further_A, x.unsqueeze(-1)).squeeze(-1)
 
-        return operator_func, apply_operator_func
+        return init_operator_func, operator_func, apply_operator_func
 
+    def init_operator(self, shape, device):
+        return self.init_operator_func(shape, device)
+    
     def get_operator(self, A):
         return self.operator_func(A)
 
@@ -202,7 +280,7 @@ class Sampler(object):
             """
             return torch.linspace(1.0, 1e-4, n_steps)
 
-        def sampling_step(x_t, A, t_curr, t_next, module, noise_scheduler):
+        def sampling_step(x_t, A, t_curr, t_next, module, noise_scheduler, eps=1e-8):
             """
             Reverse SDE step following Eq. 3.3.
 
@@ -224,7 +302,7 @@ class Sampler(object):
             sigma_t = sigma_t.unsqueeze(-1)
             sigma_next = sigma_next.unsqueeze(-1)
 
-            ratio_sigma = sigma_t / sigma_next
+            ratio_sigma = sigma_next / (sigma_t + eps) # stablize ratio for low sigma values
 
             x_next = ratio_sigma * x_t + (1 - ratio_sigma) * pred_x0
 
@@ -257,6 +335,27 @@ class Sampler(object):
             x_t = self.sampling_step(x_t, A, t_curr, t_next, module, noise_scheduler)
 
         return x_t
+
+    def sample_with_trajectory(self, shape, n_steps, A, module, noise_scheduler):
+        """
+        Same as sample(), but returns the full trajectory of x_t at each step.
+
+        Returns:
+            trajectory: tensor of shape (n_steps, n_samples, D) with x_t at each timestep
+        """
+        device = next(module.parameters()).device
+        timesteps = self.define_steps(n_steps).to(device)
+
+        x_t = torch.randn(shape, device=device)
+        trajectory = [x_t.detach().cpu()]
+
+        for i in range(len(timesteps) - 1):
+            t_curr = timesteps[i].expand(shape[0])
+            t_next = timesteps[i + 1].expand(shape[0])
+            x_t = self.sampling_step(x_t, A, t_curr, t_next, module, noise_scheduler)
+            trajectory.append(x_t.detach().cpu())
+
+        return torch.stack(trajectory, dim=0), timesteps.cpu()
 
 class AmbientLoss(nn.Module):
     """

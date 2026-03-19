@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from ambient_diffusion import NoiseScheduler, FurtherCorrupter, AmbientLoss, Sampler
 from module import Denoiser
+from viz import viz_sample_2D
 
 def load_dataset(path, batch_size=256, val_split=0.1):
     with open(path, "rb") as f:
@@ -128,6 +129,19 @@ def train(train_dataloader: DataLoader, val_dataloader: DataLoader,
 
     return module, epoch_train_losses, epoch_val_losses
 
+def sample(shape, n_steps, device, module, further_corrupter, noise_scheduler):
+    # Use Fixed Mask Sampling as the authors
+    sampler = Sampler("fms")
+
+    # For sampling, we first need to sample a further corrupted mask
+    A = further_corrupter.init_operator(shape, device) # sample A
+    A_sample = further_corrupter.get_operator(A) # sample A_further
+
+    start = time.time()
+    samples = sampler.sample(shape, n_steps, A_sample, module, noise_scheduler)
+    elapsed = time.time() - start
+    return samples, elapsed
+
 def main():
     parser = argparse.ArgumentParser(description="Ambient Diffusion Training")
     parser.add_argument("--dataset", type=str, required=True, help="Path to .pkl dataset")
@@ -145,6 +159,7 @@ def main():
     parser.add_argument("--n_samples", type=int, default=10)
     parser.add_argument("--n_steps", type=int, default=100)
     parser.add_argument("--output", type=str, default="output", help="Output directory")
+    parser.add_argument("--format", type=str, default="png", help="plot format", choices=['png', 'pdf'])
     args = parser.parse_args()
 
     os.makedirs(args.output, exist_ok=True)
@@ -166,13 +181,15 @@ def main():
     
     if dataset_type == "inpainting":
         further_corrupter = FurtherCorrupter(dataset_type, p=args.further_p)
+    elif dataset_type == "inpainting_pw":
+        further_corrupter = FurtherCorrupter(dataset_type, p=args.further_p)
     elif dataset_type == "gaussian":
         further_corrupter = FurtherCorrupter(dataset_type) # we always use m_prime=1
     else:
         raise ValueError(f"Unknown dataset corruption type {dataset_type}. Must be eitehr 'inpainting' or 'gaussian'.")
     
     module = Denoiser(data_dim=2).to(device)
-
+    
     ambient_loss = AmbientLoss(further_corrupter.apply_operator_func)
     optimizer = torch.optim.Adam(module.parameters(), lr=args.lr)
 
@@ -183,47 +200,40 @@ def main():
         args.method,
     )
 
-    # Sample
-    sampler = Sampler("fms")
-    # For sampling, use identity mask (all ones = fully observed)
-    A_sample = torch.ones(args.n_samples, 2, device=device)
-
-    start = time.time()
-    samples = sampler.sample((args.n_samples, 2), args.n_steps, A_sample, module, noise_scheduler)
-    elapsed = time.time() - start
-    print(f"Generated {args.n_samples} samples in {elapsed:.2f}s")
-
-    samples_np = samples.detach().cpu().numpy()
-
     # Load clean reference data for plotting
     with open(args.dataset, "rb") as f:
         ref_data = pickle.load(f)
     X_ref = ref_data["X"]
 
-    # Plot generated vs reference
+    # Generate sampling GIF with reference overlay
+    gif_path = os.path.join(args.output, "sampling.gif")
+    viz_sample_2D(
+        module, noise_scheduler, further_corrupter,
+        n_samples=args.n_samples, n_steps=args.n_steps,
+        output_path=gif_path,
+        ref_data=X_ref,
+    )
+
+    # Plot training curves
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    import seaborn as sns
+    sns.set_theme(style="whitegrid")
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-
-    axes[0].scatter(X_ref[:, 0], X_ref[:, 1], s=1, alpha=0.2, c='lightgray', label='Reference')
-    axes[0].scatter(samples_np[:, 0], samples_np[:, 1], s=5, alpha=0.6, c='steelblue', label='Generated')
-    axes[0].legend()
-    axes[0].set_title(f"Generated samples ({elapsed:.2f}s)")
-    axes[0].set_aspect('equal')
-
-    axes[1].plot(train_losses, label='Train')
-    axes[1].plot(val_losses, label='Val')
-    axes[1].set_xlabel('Epoch')
-    axes[1].set_ylabel('Loss')
-    axes[1].set_yscale('log')
-    axes[1].legend()
-    axes[1].set_title('Training curves')
-
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.plot(train_losses, label="Train", color=sns.color_palette("mako", 3)[1])
+    ax.plot(val_losses, label="Val", color=sns.color_palette("flare", 3)[1])
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Loss")
+    ax.set_yscale("log")
+    ax.legend()
+    ax.set_title("Training curves")
     plt.tight_layout()
-    plt.savefig(os.path.join(args.output, "results.pdf"), bbox_inches='tight')
-    print(f"Saved results to {args.output}/results.pdf")
+    curves_path = os.path.join(args.output, f"training_curves.{args.format}")
+    plt.savefig(curves_path, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved training curves to {curves_path}")
 
 if __name__ == "__main__":
     main()
