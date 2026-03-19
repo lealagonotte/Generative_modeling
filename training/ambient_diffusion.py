@@ -151,6 +151,49 @@ class Sampler(object):
         else:
             raise ValueError(f"Unknown mode '{mode}'. Must be 'fms'.")
 
+    # def _init_fixed_mask_sampling(self, **kwargs):
+
+    #     def define_steps(n_steps):
+    #         """
+    #         Defines the list of time steps from T=1 down to near 0
+    #         """
+    #         return torch.linspace(1.0, 1e-4, n_steps)
+
+    #     def sampling_step(x_t, A, t_curr, t_next, module, noise_scheduler):
+    #         """
+    #         Reverse SDE step (Euler-Maruyama) following Eq. 3.3.
+
+    #         1. Predict x0: pred_x0 = module(A, x_t, t_curr)
+    #         2. Score: s = (pred_x0 - x_t) / sigma_t^2
+    #         3. Step: x_next = x_t + (sigma_t^2 - sigma_next^2) * s + sqrt(sigma_t^2 - sigma_next^2) * z
+    #         """
+    #         sigma_t = noise_scheduler(t_curr)
+    #         sigma_next = noise_scheduler(t_next)
+
+    #         # Ensure shapes for broadcasting: (batch,) -> (batch, 1)
+    #         if sigma_t.dim() == 0:
+    #             sigma_t = sigma_t.unsqueeze(0)
+    #         if sigma_next.dim() == 0:
+    #             sigma_next = sigma_next.unsqueeze(0)
+
+    #         with torch.no_grad():
+    #             pred_x0 = module(A, x_t, t_curr)
+
+    #         sigma_t_sq = (sigma_t ** 2).unsqueeze(-1)
+    #         sigma_next_sq = (sigma_next ** 2).unsqueeze(-1)
+
+    #         score = (pred_x0 - x_t) / sigma_t_sq
+    #         diff_sq = sigma_t_sq - sigma_next_sq
+
+    #         z = torch.randn_like(x_t)
+    #         noise_scale = torch.sqrt(torch.clamp(diff_sq, min=0.0))
+
+    #         x_next = x_t + diff_sq * score + noise_scale * z
+
+    #         return x_next
+
+    #     return sampling_step, define_steps
+
     def _init_fixed_mask_sampling(self, **kwargs):
 
         def define_steps(n_steps):
@@ -161,11 +204,10 @@ class Sampler(object):
 
         def sampling_step(x_t, A, t_curr, t_next, module, noise_scheduler):
             """
-            Reverse SDE step (Euler-Maruyama) following Eq. 3.3.
+            Reverse SDE step following Eq. 3.3.
 
             1. Predict x0: pred_x0 = module(A, x_t, t_curr)
-            2. Score: s = (pred_x0 - x_t) / sigma_t^2
-            3. Step: x_next = x_t + (sigma_t^2 - sigma_next^2) * s + sqrt(sigma_t^2 - sigma_next^2) * z
+            2. Step: x_next = (sigma_next / sigma_t) * x_t + (1 - sigma_next / sigma_t) * pred_x0
             """
             sigma_t = noise_scheduler(t_curr)
             sigma_next = noise_scheduler(t_next)
@@ -179,16 +221,12 @@ class Sampler(object):
             with torch.no_grad():
                 pred_x0 = module(A, x_t, t_curr)
 
-            sigma_t_sq = (sigma_t ** 2).unsqueeze(-1)
-            sigma_next_sq = (sigma_next ** 2).unsqueeze(-1)
+            sigma_t = sigma_t.unsqueeze(-1)
+            sigma_next = sigma_next.unsqueeze(-1)
 
-            score = (pred_x0 - x_t) / sigma_t_sq
-            diff_sq = sigma_t_sq - sigma_next_sq
+            ratio_sigma = sigma_t / sigma_next
 
-            z = torch.randn_like(x_t)
-            noise_scale = torch.sqrt(torch.clamp(diff_sq, min=0.0))
-
-            x_next = x_t + diff_sq * score + noise_scale * z
+            x_next = ratio_sigma * x_t + (1 - ratio_sigma) * pred_x0
 
             return x_next
 

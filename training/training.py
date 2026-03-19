@@ -41,7 +41,8 @@ def batch_step(module: nn.Module,
                     batch: tuple,
                     loss: nn.Module,
                     noise_scheduler: NoiseScheduler,
-                    further_corrupter: FurtherCorrupter):
+                    further_corrupter: FurtherCorrupter,
+                    method: str):
     x0, A = batch
     device = next(module.parameters()).device
     x0, A = x0.to(device), A.to(device)
@@ -57,7 +58,10 @@ def batch_step(module: nn.Module,
     x_t = noise_scheduler.apply_noise(x0, t, eps)
 
     # obtain the further corrupted operator
-    further_A = further_corrupter.get_operator(A)
+    if method == "naive":
+        further_A = A # the naive approach described in ambient diffusion, Eq. 3.1
+    else:
+        further_A = further_corrupter.get_operator(A)
 
     # applying the further corruption to x_t
     further_x_t = further_corrupter.apply_operator(further_A, x_t)
@@ -75,6 +79,7 @@ def train(train_dataloader: DataLoader, val_dataloader: DataLoader,
             module: nn.Module,
             noise_scheduler: NoiseScheduler,
             further_corrupter: FurtherCorrupter,
+            method: str = "ambient",
             ):
     epoch_train_losses = []
     epoch_val_losses = []
@@ -86,7 +91,7 @@ def train(train_dataloader: DataLoader, val_dataloader: DataLoader,
         module.train()
         epoch_train_loss = []
         for i, batch in enumerate(train_dataloader):
-            loss_value = batch_step(module, batch, loss, noise_scheduler, further_corrupter)
+            loss_value = batch_step(module, batch, loss, noise_scheduler, further_corrupter, method)
 
             optimizer.zero_grad()
             loss_value.backward()
@@ -99,7 +104,7 @@ def train(train_dataloader: DataLoader, val_dataloader: DataLoader,
         epoch_val_loss = []
         with torch.no_grad():
             for i, batch in enumerate(val_dataloader):
-                loss_value = batch_step(module, batch, loss, noise_scheduler, further_corrupter)
+                loss_value = batch_step(module, batch, loss, noise_scheduler, further_corrupter, method)
 
                 epoch_val_loss.append(loss_value.detach().cpu().numpy())
 
@@ -125,8 +130,12 @@ def train(train_dataloader: DataLoader, val_dataloader: DataLoader,
 def main():
     parser = argparse.ArgumentParser(description="Ambient Diffusion Training")
     parser.add_argument("--dataset", type=str, required=True, help="Path to .pkl dataset")
+    parser.add_argument("--method", type=str, default="ambient", help="Type of training framework")
     parser.add_argument("--schedule", type=str, default="interpolation", choices=["interpolation", "ve", "vp"])
-    parser.add_argument("--sigma_max", type=float, default=1.0)
+    parser.add_argument("--sigma_max", type=float, default=1.0, help="Parameter used in Interpolation and Variance Exploding schemes.")
+    parser.add_argument("--sigma_min", type=float, default=0.01, help="Variance Exploding parameter")
+    parser.add_argument("--beta_max", type=float, default=20.0, help="Variance Preserving parameter")
+    parser.add_argument("--beta_min", type=float, default=0.1, help="Variance Preserving parameter")
     parser.add_argument("--further_p", type=float, default=0.1, help="Further corruption probability")
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--patience", type=int, default=20)
@@ -142,12 +151,25 @@ def main():
     print(f"Using device: {device}")
 
     # Load data
-    train_loader, val_loader = load_dataset(args.dataset, args.batch_size)
+    train_loader, val_loader, dataset_type = load_dataset(args.dataset, args.batch_size)
 
     # Setup components
-    noise_scheduler = NoiseScheduler(args.schedule, sigma_max=args.sigma_max)
-    further_corrupter = FurtherCorrupter("inpainting", p=args.further_p)
-
+    if args.schedule == "interpolation":
+        noise_scheduler = NoiseScheduler(args.schedule, sigma_max=args.sigma_max)
+    elif args.schedule == "vp":
+        noise_scheduler = NoiseScheduler(args.schedule, beta_max=args.beta_max, beta_max=args.beta_min)
+    elif args.schedule == "ve":
+        noise_scheduler = NoiseScheduler(args.schedule, sigma_max=args.sigma_max, sigma_max=args.sigma_min)
+    else:
+        raise ValueError(f"Unknown noise schedule {args.schedule}. Must be eitehr 'interpolation', 'vp' or 've'.")
+    
+    if dataset_type == "inpainting":
+        further_corrupter = FurtherCorrupter(dataset_type, p=args.further_p)
+    elif dataset_type == "gaussian":
+        further_corrupter = FurtherCorrupter(dataset_type) # we always use m_prime=1
+    else:
+        raise ValueError(f"Unknown dataset corruption type {dataset_type}. Must be eitehr 'inpainting' or 'gaussian'.")
+    
     module = Denoiser(data_dim=2).to(device)
 
     ambient_loss = AmbientLoss(further_corrupter.apply_operator_func)
@@ -156,7 +178,8 @@ def main():
     # Train
     module, train_losses, val_losses = train(
         train_loader, val_loader, args.epochs, args.patience,
-        ambient_loss, optimizer, module, noise_scheduler, further_corrupter
+        ambient_loss, optimizer, module, noise_scheduler, further_corrupter,
+        args.method,
     )
 
     # Sample
@@ -183,7 +206,7 @@ def main():
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
-    axes[0].scatter(X_ref[:5000, 0], X_ref[:5000, 1], s=1, alpha=0.2, c='lightgray', label='Reference')
+    axes[0].scatter(X_ref[:, 0], X_ref[:, 1], s=1, alpha=0.2, c='lightgray', label='Reference')
     axes[0].scatter(samples_np[:, 0], samples_np[:, 1], s=5, alpha=0.6, c='steelblue', label='Generated')
     axes[0].legend()
     axes[0].set_title(f"Generated samples ({elapsed:.2f}s)")
