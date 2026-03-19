@@ -31,7 +31,7 @@ def main():
     parser.add_argument("--n_samples", type=int, default=100000,
                         help="Number of points to generate")
     parser.add_argument("--corruption", type=str, default="inpainting",
-                        choices=["inpainting", "pointwise", "gaussian"],
+                        choices=["inpainting", "inpainting_pw", "gaussian"],
                         help="Corruption type")
     parser.add_argument("--m", type=float, default=2,
                         help="Number of observed measurements")
@@ -60,15 +60,13 @@ def main():
     corruption = args.corruption
     if corruption == "inpainting":
         Y, A = inpainting_corruption(X, p=args.p, prevent_zero=args.prevent_zero, rng=rng)
-    elif corruption == "pointwise":
+    elif corruption == "inpainting_pw":
         Y, A = inpainting_corruption_pointwise(X, p=args.p, rng=rng)
     elif corruption == "gaussian":
         Y, A = compressed_sensing_corruption(X, m=args.m, rng=rng)
 
     # Save
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
-    if corruption == "pointwise":
-        corruption = "inpainting"
     
     data = {"type": corruption,"X": X, "A": A}
     with open(args.output, "wb") as f:
