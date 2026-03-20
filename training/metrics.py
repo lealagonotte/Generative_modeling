@@ -1,67 +1,77 @@
+import numpy as np
 import torch
-import torch.nn.functional as F
+import ot
 from typing import Optional
-try:
-    import ot
-except ImportError:
-    raise ImportError(
-        "La librairie POT est requise : pip install POT"
-    )
+
+
+def _normalize_weights(weights: Optional[torch.Tensor], n: int, dtype=None, device=None) -> np.ndarray:
+    """Helper partagé : retourne un tableau numpy de poids normalisés."""
+    if weights is not None:
+        w = weights.detach().cpu().numpy().astype(np.float64)
+    else:
+        w = np.ones(n, dtype=np.float64) / n
+    w = w / w.sum()
+    return w
+
+
+def _validate_p(p: int) -> None:
+    """Valide que p est un entier strictement positif."""
+    if not isinstance(p, int) or p < 1:
+        raise ValueError(f"p doit être un entier >= 1, reçu : {p!r}")
+
 
 ################################ Distance de Wasserstein ################################
+
 def wasserstein_distance(
     P: torch.Tensor,
     Q: torch.Tensor,
     p: int = 2,
-    weights_P: torch.Tensor = None,
-    weights_Q: torch.Tensor = None,
+    weights_P: Optional[torch.Tensor] = None,
+    weights_Q: Optional[torch.Tensor] = None,
 ) -> float:
     """
-    Distance de Wasserstein W_p(P, Q) .
- 
+    Distance de Wasserstein W_p(P, Q).
+
     Args:
         P          : (N, d) échantillons de la distribution source
         Q          : (M, d) échantillons de la distribution cible
-        p          : exposant (1 ou 2, défaut 2)
+        p          : exposant entier >= 1 (défaut 2)
         weights_P  : (N,) poids de P, uniformes par défaut
         weights_Q  : (M,) poids de Q, uniformes par défaut
- 
+
     Returns:
         W_p (float) : distance de Wasserstein
- 
     """
+    _validate_p(p)
+
     if P.dim() == 1:
         P = P.unsqueeze(1)
     if Q.dim() == 1:
         Q = Q.unsqueeze(1)
- 
+
     if P.shape[1] != Q.shape[1]:
         raise ValueError(
             f"P et Q doivent avoir la même dimension d. "
             f"Reçu: {P.shape[1]} vs {Q.shape[1]}"
         )
- 
-    N, M = P.shape[0], Q.shape[0]
- 
-    # Poids uniformes par défaut
-    a = weights_P.cpu().numpy() if weights_P is not None else np.ones(N) / N
-    b = weights_Q.cpu().numpy() if weights_Q is not None else np.ones(M) / M
- 
-    # Normalisation des poids
-    a = a / a.sum()
-    b = b / b.sum()
- 
+
+    N = P.shape[0]
+    M_samples = Q.shape[0]  
+
+    a = _normalize_weights(weights_P, N)
+    b = _normalize_weights(weights_Q, M_samples)
+
     # Matrice de coût : ‖x_i − y_j‖^p
-    metric = "sqeuclidean" if p == 2 else "euclidean"
+    # On calcule toujours les distances euclidiennes et on élève à la puissance p
     M_cost = ot.dist(
         P.detach().cpu().numpy(),
         Q.detach().cpu().numpy(),
-        metric=metric,
-    )  # (N, M)
- 
-    # Transport optimal exact 
-    wp_p = ot.emd2(a, b, M_cost)   # W_p^p
- 
+        metric="euclidean",
+    ) ** p  # (N, M)
+
+    # Transport optimal exact → W_p^p
+    wp_p = ot.emd2(a, b, M_cost)
+
     return float(wp_p) ** (1.0 / p)
 
 
@@ -72,12 +82,14 @@ def sliced_wasserstein_tensors(
     y: torch.Tensor,
     n_projections: int = 100,
     p: int = 2,
-    seed: int | None = 0,
-    weights_x: torch.Tensor | None = None,
-    weights_y: torch.Tensor | None = None,
-) -> torch.Tensor:
+    seed: Optional[int] = 0,
+    weights_x: Optional[torch.Tensor] = None,
+    weights_y: Optional[torch.Tensor] = None,
+) -> float:
     """
     Sliced Wasserstein distance entre deux tenseurs PyTorch avec POT.
+
+    Nécessite POT >= 0.8.0.
 
     Paramètres
     ----------
@@ -88,7 +100,7 @@ def sliced_wasserstein_tensors(
     n_projections : int
         Nombre de projections aléatoires
     p : int
-        Ordre de la distance (souvent 2)
+        Ordre de la distance (>= 1, souvent 2)
     seed : int | None
         Graine aléatoire
     weights_x : torch.Tensor | None
@@ -98,8 +110,10 @@ def sliced_wasserstein_tensors(
 
     Retour
     ------
-    torch.Tensor scalaire
+    float : distance de Sliced Wasserstein
     """
+    _validate_p(p)
+
     x = x.float()
     y = y.float()
 
@@ -110,23 +124,19 @@ def sliced_wasserstein_tensors(
 
     if x.shape[1] != y.shape[1]:
         raise ValueError(
-            f"x et y doivent avoir la même dimension d'espace, reçu {x.shape[1]} et {y.shape[1]}"
+            f"x et y doivent avoir la même dimension d'espace, "
+            f"reçu {x.shape[1]} et {y.shape[1]}"
         )
 
     n = x.shape[0]
     m = y.shape[0]
 
-    if weights_x is None:
-        a = torch.full((n,), 1.0 / n, dtype=x.dtype, device=x.device)
-    else:
-        a = weights_x.to(device=x.device, dtype=x.dtype)
-        a = a / a.sum()
+    # On utilise le helper commun (numpy), puis on repasse en tenseur float32
+    a_np = _normalize_weights(weights_x, n)
+    b_np = _normalize_weights(weights_y, m)
 
-    if weights_y is None:
-        b = torch.full((m,), 1.0 / m, dtype=y.dtype, device=y.device)
-    else:
-        b = weights_y.to(device=y.device, dtype=y.dtype)
-        b = b / b.sum()
+    a = torch.tensor(a_np, dtype=x.dtype, device=x.device)
+    b = torch.tensor(b_np, dtype=y.dtype, device=y.device)
 
     sw = ot.sliced.sliced_wasserstein_distance(
         X_s=x,
@@ -137,5 +147,4 @@ def sliced_wasserstein_tensors(
         p=p,
         seed=seed,
     )
-
-    return sw
+    return float(sw)
