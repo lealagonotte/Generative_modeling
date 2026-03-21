@@ -23,6 +23,7 @@ from training.ambient_diffusion import NoiseScheduler, FurtherCorrupter, Sampler
 from training.module import Denoiser, FlatDenoiserNx2D, PointNetDenoiserNx2D
 from training.training import train, load_dataset
 from training.metrics import wasserstein_distance, sliced_wasserstein_distance, chamfer_distance
+from training.utils import TqdmToLogger
 
 METRIC_DICT = {"wd": wasserstein_distance, "swd": sliced_wasserstein_distance, "cd": chamfer_distance}
 
@@ -46,6 +47,7 @@ def compute_metrics(dataset_path, metric_list, sampler, n_samples, n_steps,
 
     # Run sampling with trajectory
     module.eval()
+    LOGGER.info("Sampling..")
     samples = sampler.sample(
         shape, n_steps, A_sample, module, noise_scheduler
     )
@@ -56,6 +58,7 @@ def compute_metrics(dataset_path, metric_list, sampler, n_samples, n_steps,
 
     metric_results = {}
     for metric in metric_list:
+        LOGGER.info(f"Computing {metric}...")
         metric_results[metric] = METRIC_DICT[metric](samples, X_ref)
 
     return metric_results
@@ -82,10 +85,12 @@ def launch_experiments(dataset_path, p, delta_list,
     best_so_far = {"metrics":{m:np.inf for m in metric_list}}
     worst_so_far = {"metrics":{m:-np.inf for m in metric_list}}
 
-    for method in ["ambient", "naive"]:
-        logging.info(f"Running {method} method".upper())
-        for delta in delta_list:
-            logging.info(f"Using {delta} further corruption..")
+    tqdm_out = TqdmToLogger(LOGGER,level=logging.INFO)
+    for method in tqdm(["ambient", "naive"], file=tqdm_out, desc="Method"):
+        LOGGER.info(f"Running {method} method".upper())
+        for delta in tqdm(delta_list, file=tqdm_out, desc="Delta", leave=True):
+            tqdm.set_description_str(f"Using {delta} further corruption..")
+            tqdm.refresh()
             further_corrupter = FurtherCorrupter(dataset_type, p=delta)
         
             training_kwargs = module_kwargs.copy()
@@ -109,7 +114,7 @@ def launch_experiments(dataset_path, p, delta_list,
             module, train_losses, val_losses = train(
                 train_loader, val_loader, epochs, patience,
                 ambient_loss, optimizer, module, noise_scheduler, further_corrupter,
-                method, logger=True
+                method, logger=LOGGER
             )
 
             metric_dict = compute_metrics(dataset_path, metric_list, 
@@ -152,7 +157,7 @@ def make_table(metrics_list, metric_list, folder):
     aggregated_df = df.groupby(["method", "p", "delta"]).agg(**agg_dict)
     
     aggregated_df.to_csv(str(filename))
-    logging.info(f"\nTable saved at {str(filename)}")
+    LOGGER.info(f"\nTable saved at {str(filename)}")
 
 def plot_loss_curves(loss_curves, folder):
     viz_loss_curves(loss_curves, folder)
@@ -182,6 +187,7 @@ def visualize_best_worse(best, worst, folder, n_samples, n_steps):
         filename = folder / "viz" / f"{prefix}_sampling_{method}_{p:.4f}_{delta:.4f}.gif"
 
         # Generate sampling GIF with reference overlay
+        LOGGER.info(f"Generating {prefix} sampling GIF...")
         if corruption_type in ["inpainting", "gaussian", "inpainting_pw"]:
             if mode == "Nx2D":
                 viz_sample_Nx2D(
@@ -290,7 +296,7 @@ def main():
         if m.lower() in METRIC_DICT.keys():
             metric_list.append(m.lower())
         else:
-            logging.warning(f"Metric {m} is unknown and will be skipped.")
+            LOGGER.warning(f"Metric {m} is unknown and will be skipped.")
     assert len(metric_list) >= 1, f"All user defined metrics were unknown. Use at least one of {list(METRIC_DICT.keys())}."
     ranking_metric = metric_list[0]
 
@@ -311,17 +317,19 @@ def main():
                         style = "{",
                         datefmt = "%Y-%m-%d %H:%M",
                     )
+    global LOGGER
+    LOGGER = logging.getLOGGER()
 
     training_cfg = cfg_dict["training"]
     device = torch_device("cuda" if cuda_is_available() else "cpu")
-    logging.info(f"Using {device}")
+    LOGGER.info(f"Using {device}")
     training_cfg["device"] = device
 
     viz_cfg = cfg_dict["viz"]
 
     for dataset_type in ["two_moons", "swiss_roll"]:
 
-        logging.info(f"Making {dataset_type.upper()} datasets..")
+        LOGGER.info(f"Making {dataset_type.upper()} datasets..")
         datasets = make_inpainting_datasets(datasets_cfg, dataset_type, OUTPUT_FOLDER)
 
         results_metrics_list = []
@@ -329,11 +337,11 @@ def main():
         worst_metric = -np.inf
 
         for dataset_path, p in datasets:
-            logging.info("\n"+"="*80)
-            logging.info(str(dataset_path).upper())
-            logging.info("="*80)
+            LOGGER.info("\n"+"="*80)
+            LOGGER.info(str(dataset_path).upper())
+            LOGGER.info("="*80)
             
-            logging.info("Launching experiments..")
+            LOGGER.info("Launching experiments..")
             results_metrics, best, worst, loss_curves = launch_experiments(dataset_path, p, delta_list, 
                                                                            metric_list, ranking_metric, 
                                                                            **training_cfg)
@@ -348,16 +356,16 @@ def main():
                 worst_overall = worst
                 worst_metric = worst["metrics"][ranking_metric]
 
-        logging.info("Saving results table..")
+        LOGGER.info("Saving results table..")
         make_table(results_metrics_list, metric_list, OUTPUT_FOLDER)
 
-        logging.info("Making visualizations..")
+        LOGGER.info("Making visualizations..")
         plot_loss_curves(loss_curves, OUTPUT_FOLDER)
 
         visualize_best_worse(best_overall, worst_overall, OUTPUT_FOLDER, 
                             **viz_cfg)
 
-        logging.info(f"All {dataset_type} experiments completed.")
+        LOGGER.info(f"All {dataset_type} experiments completed.")
 
 if __name__ == "__main__":
     main()
