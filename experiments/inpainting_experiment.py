@@ -28,6 +28,12 @@ from training.utils import TqdmToLogger
 
 METRIC_DICT = {"wd": wasserstein_distance, "swd": sliced_wasserstein_distance, "cd": chamfer_distance}
 
+global SEEDS
+SEEDS = []
+
+global LOGGER
+LOGGER = None
+
 def compute_metrics(dataset_path, metric_list, sampler, n_samples, n_steps, 
                     module, further_corrupter, noise_scheduler):
     with open(dataset_path, "rb") as f:
@@ -89,9 +95,8 @@ def launch_experiments(dataset_path, p, delta_list,
     tqdm_out = TqdmToLogger(LOGGER,level=logging.INFO)
     for method in tqdm(["ambient", "naive"], file=tqdm_out, desc="Method"):
         LOGGER.info(f"Running {method} method".upper())
-        for delta in tqdm(delta_list, file=tqdm_out, desc="Delta", leave=True):
-            tqdm.set_description_str(f"Using {delta} further corruption..")
-            tqdm.refresh()
+        for delta in tqdm(delta_list, file=tqdm_out, desc="Delta"):
+            LOGGER.info(f"Using {delta} further corruption..")
             further_corrupter = FurtherCorrupter(dataset_type, p=delta)
         
             training_kwargs = module_kwargs.copy()
@@ -145,10 +150,10 @@ def launch_experiments(dataset_path, p, delta_list,
             
     return results, best_so_far, worst_so_far, loss_curves
 
-def make_table(metrics_list, metric_list, folder):
+def make_table(results, metric_list, folder):
     filename = folder / "results_table.csv"
 
-    df = pd.DataFrame(metrics_list)
+    df = pd.DataFrame(results)
 
     agg_dict = {}
     for metric in metric_list:
@@ -158,7 +163,7 @@ def make_table(metrics_list, metric_list, folder):
     aggregated_df = df.groupby(["method", "p", "delta"]).agg(**agg_dict)
     
     aggregated_df.to_csv(str(filename))
-    LOGGER.info(f"\nTable saved at {str(filename)}")
+    LOGGER.info(f"Table saved at {str(filename)}")
 
 def plot_loss_curves(loss_curves, folder):
     viz_loss_curves(loss_curves, folder)
@@ -270,7 +275,7 @@ def make_inpainting_datasets(datasets_cfg, dataset_type, folder):
             with open(str(filename), "wb") as f:
                 pkl.dump(data, f)
             
-            traces.append((filename, p))
+            traces.append((str(filename), p))
     return traces
 
 def main():
@@ -297,7 +302,7 @@ def main():
         if m.lower() in METRIC_DICT.keys():
             metric_list.append(m.lower())
         else:
-            LOGGER.warning(f"Metric {m} is unknown and will be skipped.")
+            print(f"Metric {m} is unknown and will be skipped.")
     assert len(metric_list) >= 1, f"All user defined metrics were unknown. Use at least one of {list(METRIC_DICT.keys())}."
     ranking_metric = metric_list[0]
 
@@ -317,9 +322,10 @@ def main():
                         format = "{asctime} - {levelname} - {message}",
                         style = "{",
                         datefmt = "%Y-%m-%d %H:%M",
+                        level = logging.INFO
                     )
     global LOGGER
-    LOGGER = logging.getLOGGER()
+    LOGGER = logging.getLogger()
 
     training_cfg = cfg_dict["training"]
     device = torch_device("cuda" if cuda_is_available() else "cpu")
@@ -338,7 +344,7 @@ def main():
         worst_metric = -np.inf
 
         for dataset_path, p in datasets:
-            LOGGER.info("\n"+"="*80)
+            LOGGER.info("="*80)
             LOGGER.info(str(dataset_path).upper())
             LOGGER.info("="*80)
             

@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ambient_diffusion import NoiseScheduler, FurtherCorrupter, AmbientLoss, Sampler
 from module import Denoiser, FlatDenoiserNx2D, PointNetDenoiserNx2D
 from viz import viz_sample_2D
+from training.utils import TqdmToLogger
 
 def load_dataset(path, batch_size=256, val_split=0.1):
     with open(path, "rb") as f:
@@ -125,8 +126,7 @@ def train(train_dataloader: DataLoader, val_dataloader: DataLoader,
         epoch_val_losses.append(val_mean)
 
         if logger:
-            tqdm.set_description_str(f"\nEpoch {epoch+1}: train={train_mean:.4e}, val={val_mean:.4e}")
-            tqdm.refresh()
+            logger.info(f"Epoch {epoch+1}: train={train_mean:.4e}, val={val_mean:.4e}")
         else:
             print(f"Epoch {epoch+1}: train={train_mean:.4e}, val={val_mean:.4e}")
 
