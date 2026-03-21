@@ -15,7 +15,7 @@ from sklearn.datasets import make_moons, make_swiss_roll
 BASE_DIR = str(Path(__file__).resolve().parent)
 sys.path.append(BASE_DIR)
 
-from generate_dataset.utils import (normalize,
+from utils import (normalize,
                    inpainting_corruption, inpainting_corruption_pointwise,
                    compressed_sensing_corruption,
                    inpainting_corruption_Nx2D, inpainting_corruption_pointwise_Nx2D,
