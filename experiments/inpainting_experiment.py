@@ -308,11 +308,12 @@ def main():
 
     datasets_cfg = cfg_dict["datasets"]
     inpainting_type = datasets_cfg["type"]
+    mode = datasets_cfg.get("mode", "2D")
     delta_list = datasets_cfg["delta"]
 
     # Making output_folder
     folder = cfg_dict["output_folder"]
-    folder = "/".join(folder.split("/")[:-1]) + f"/{inpainting_type}_results"
+    folder = "/".join(folder.split("/")[:-1]) + f"/{inpainting_type}_{mode}_results"
     OUTPUT_FOLDER = Path(folder).resolve()
     os.makedirs(str(OUTPUT_FOLDER), exist_ok=True)
 
