@@ -2,6 +2,9 @@ import pandas as pd
 import numpy as np
 from sklearn.datasets import make_moons, make_swiss_roll
 import pickle
+
+from utils import (random_rotation_2D, random_translation_2D, random_scale_2D,
+                   inpainting_corruption_Nx2D, inpainting_corruption_pointwise_Nx2D)
  
 #################################### INPAINTING CORRUPTION ##############################################
 def inpainting_corruption(X: np.ndarray, p: float = 0.2, prevent_zero: bool = True,
@@ -102,6 +105,67 @@ def inpainting_corruption_pointwise(X, p=0.2, rng=None):
     A = np.stack([mask, mask], axis=1)  # a1=a2=mask
     
     return Y, A
+
+################################### N×2D DATASET GENERATION ###############################################
+
+def generate_Nx2D_data(dataset, n_clouds, n_points_per_cloud,
+                       noise_min=0.01, noise_max=0.9,
+                       augment_rotation=True,
+                       augment_translation=True, shift_std=0.5,
+                       augment_scale=True, scale_min=0.5, scale_max=2.0,
+                       seed=42):
+    """
+    Generate a dataset of point clouds for the N×2D setting.
+
+    Each sample is an entire point cloud of n_points_per_cloud points in 2D.
+    Clouds are generated with varied noise levels and optional geometric
+    augmentations (rotation, translation, scale).
+
+    Args:
+        dataset              : "two_moons" or "swiss_roll"
+        n_clouds             : number of point clouds to generate
+        n_points_per_cloud   : number of points per cloud (N)
+        noise_min            : minimum noise level for generation
+        noise_max            : maximum noise level for generation
+        augment_rotation     : apply random SO(2) rotation per cloud
+        augment_translation  : apply random 2D translation per cloud
+        shift_std            : std of Gaussian translation
+        augment_scale        : apply random isotropic scaling per cloud
+        scale_min            : minimum scale factor
+        scale_max            : maximum scale factor
+        seed                 : random seed
+
+    Returns:
+        X : array of shape (n_clouds, n_points_per_cloud, 2)
+    """
+    rng = np.random.default_rng(seed)
+    noise_levels = rng.uniform(noise_min, noise_max, size=n_clouds)
+
+    clouds = []
+    for i, noise_val in enumerate(noise_levels):
+        if dataset == "two_moons":
+            pts, _ = make_moons(n_samples=n_points_per_cloud, noise=noise_val, random_state=i)
+        elif dataset == "swiss_roll":
+            pts, _ = make_swiss_roll(n_samples=n_points_per_cloud, noise=noise_val, random_state=i)
+            pts = pts[:, [0, 2]]
+        else:
+            raise ValueError(f"Unknown dataset: {dataset}")
+        pts = normalize(pts)
+        clouds.append(pts)
+
+    X = np.stack(clouds, axis=0)  # (n_clouds, N, 2)
+
+    # Geometric augmentations
+    rng_aug = np.random.default_rng(seed + 100)
+    if augment_rotation:
+        X = random_rotation_2D(X, rng=rng_aug)
+    if augment_translation:
+        X = random_translation_2D(X, shift_std=shift_std, rng=rng_aug)
+    if augment_scale:
+        X = random_scale_2D(X, scale_min=scale_min, scale_max=scale_max, rng=rng_aug)
+
+    return X.astype(np.float32)
+
 
 ################################### DATASET (N,2) ###############################################
 
