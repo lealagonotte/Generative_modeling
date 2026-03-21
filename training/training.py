@@ -3,6 +3,7 @@ import os, sys
 import pickle
 import time
 import argparse
+import logging
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
@@ -82,6 +83,7 @@ def train(train_dataloader: DataLoader, val_dataloader: DataLoader,
             noise_scheduler: NoiseScheduler,
             further_corrupter: FurtherCorrupter,
             method: str = "ambient",
+            logger: bool = False
             ):
     epoch_train_losses = []
     epoch_val_losses = []
@@ -115,7 +117,10 @@ def train(train_dataloader: DataLoader, val_dataloader: DataLoader,
         epoch_train_losses.append(train_mean)
         epoch_val_losses.append(val_mean)
 
-        print(f"Epoch {epoch+1}: train={train_mean:.4e}, val={val_mean:.4e}")
+        if logger:
+            logging.info(f"Epoch {epoch+1}: train={train_mean:.4e}, val={val_mean:.4e}")
+        else:
+            print(f"Epoch {epoch+1}: train={train_mean:.4e}, val={val_mean:.4e}")
 
         # Early stopping
         if val_mean < best_val_loss:
@@ -124,7 +129,10 @@ def train(train_dataloader: DataLoader, val_dataloader: DataLoader,
         else:
             patience_counter += 1
             if patience_counter >= patience:
-                print(f"Early stopping at epoch {epoch+1}")
+                if logger:
+                    logging.info(f"Early stopping at epoch {epoch+1}")
+                else:
+                    print(f"Early stopping at epoch {epoch+1}")
                 break
 
     return module, epoch_train_losses, epoch_val_losses

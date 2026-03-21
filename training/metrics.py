@@ -77,7 +77,7 @@ def wasserstein_distance(
 
 ################################ Sliced Wasserstein Distance (SWD) ################################
 
-def sliced_wasserstein_tensors(
+def sliced_wasserstein_distance(
     x: torch.Tensor,
     y: torch.Tensor,
     n_projections: int = 100,

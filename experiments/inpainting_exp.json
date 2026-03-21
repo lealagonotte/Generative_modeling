@@ -1,0 +1,29 @@
+{
+    "n_replicates": 5,
+    "metrics": ["wd", "swd"],
+    "output_folder": "./results",
+    "datasets": {
+        "type": "inpainting",
+        "prevent_zero": 1,
+        "p": [0.0, 0.2, 0.4, 0.6, 0.8],
+        "delta": [0.0, 0.1, 0.3],
+        "X_params": {
+            "two_moons": {"n_sample": 5000, "noise": 0.1},
+            "swiss_roll": {"n_sample": 5000, "noise": 0.4}
+        }
+    },
+    "training_cfg": {
+        "batch_size": 256,
+        "schedule": "ve",
+        "schedule_kwargs": {"sigma_min": 0.01, "sigma_max":1.0},
+        "module_kwargs": {"data_dim":2, "hidden_dim":128, "n_layers":4, "time_embed_dim":32},
+        "adam_kwargs": {"lr":1e-3},
+        "sampler": "fms",
+        "n_sample": 5000,
+        "n_steps": 100
+    },
+    "viz": {
+        "n_samples": 5000,
+        "n_steps": 100
+    }
+}

@@ -1,5 +1,9 @@
 """Module to define visualizations and animations for 2D diffusion sampling."""
 
+import os
+from collections import defaultdict
+from pathlib import Path
+
 import numpy as np
 import torch
 import matplotlib
@@ -120,3 +124,82 @@ def viz_sample_2D(
     anim.save(output_path, writer="pillow", fps=fps)
     plt.close(fig)
     print(f"Saved sampling GIF to {output_path}")
+
+
+def _plot_mean_std(ax, epochs, mean, std, color, label):
+    ax.plot(epochs, mean, color=color, label=label)
+    ax.fill_between(epochs, mean - std, mean + std, color=color, alpha=0.2)
+
+
+def _group_loss_curves(loss_curves):
+    grouped = defaultdict(list)
+    for entry in loss_curves:
+        key = (entry["method"], entry["p"], entry["delta"])
+        grouped[key].append(entry)
+    return grouped
+
+
+def _compute_mean_std(entries, key):
+    arrays = [np.array(e[key]) for e in entries]
+    min_len = min(len(a) for a in arrays)
+    stacked = np.stack([a[:min_len] for a in arrays], axis=0)
+    return np.arange(min_len), stacked.mean(axis=0), stacked.std(axis=0)
+
+
+def viz_loss_curves(loss_curves, output_folder):
+    output_folder = Path(output_folder)
+    viz_dir = output_folder / "viz"
+    os.makedirs(str(viz_dir), exist_ok=True)
+
+    grouped = _group_loss_curves(loss_curves)
+    method_colors = {"ambient": sns.color_palette()[0], "naive": sns.color_palette()[3]}
+
+    # --- (a) Ambient vs Naive per (p, delta) setting ---
+    settings = set()
+    for (method, p, delta) in grouped:
+        settings.add((p, delta))
+
+    for p, delta in sorted(settings):
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+        for split_idx, split in enumerate(["train", "val"]):
+            ax = axes[split_idx]
+            for method in ["ambient", "naive"]:
+                key = (method, p, delta)
+                if key not in grouped:
+                    continue
+                epochs, mean, std = _compute_mean_std(grouped[key], split)
+                _plot_mean_std(ax, epochs, mean, std, method_colors[method], method)
+            ax.set_xlabel("Epoch")
+            ax.set_ylabel("Loss")
+            ax.set_title(f"{split.capitalize()} loss  (p={p:.3f}, δ={delta:.3f})")
+            ax.legend()
+        fig.tight_layout()
+        fname = viz_dir / f"loss_ambient_vs_naive_p{p:.4f}_delta{delta:.4f}.png"
+        fig.savefig(str(fname), dpi=150)
+        plt.close(fig)
+
+    # --- (b) All ambient / (c) All naive ---
+    cmap = sns.color_palette("viridis", n_colors=max(len(settings), 1))
+
+    for method in ["ambient", "naive"]:
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+        color_idx = 0
+        for p, delta in sorted(settings):
+            key = (method, p, delta)
+            if key not in grouped:
+                continue
+            color = cmap[color_idx % len(cmap)]
+            label = f"p={p:.3f}, δ={delta:.3f}"
+            for split_idx, split in enumerate(["train", "val"]):
+                epochs, mean, std = _compute_mean_std(grouped[key], split)
+                _plot_mean_std(axes[split_idx], epochs, mean, std, color, label)
+            color_idx += 1
+        for split_idx, split in enumerate(["train", "val"]):
+            axes[split_idx].set_xlabel("Epoch")
+            axes[split_idx].set_ylabel("Loss")
+            axes[split_idx].set_title(f"{method.capitalize()} — {split.capitalize()} loss")
+            axes[split_idx].legend(fontsize=8)
+        fig.tight_layout()
+        fname = viz_dir / f"loss_all_{method}.png"
+        fig.savefig(str(fname), dpi=150)
+        plt.close(fig)
