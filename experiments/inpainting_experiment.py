@@ -92,10 +92,9 @@ def launch_experiments(dataset_path, p, delta_list,
     best_so_far = {"metrics":{m:np.inf for m in metric_list}}
     worst_so_far = {"metrics":{m:-np.inf for m in metric_list}}
 
-    tqdm_out = TqdmToLogger(LOGGER,level=logging.INFO)
-    for method in tqdm(["ambient", "naive"], file=tqdm_out, desc="Method"):
+    for method in ["ambient", "naive"]:
         LOGGER.info(f"Running {method} method".upper())
-        for delta in tqdm(delta_list, file=tqdm_out, desc="Delta"):
+        for delta in delta_list:
             LOGGER.info(f"Using {delta} further corruption..")
             further_corrupter = FurtherCorrupter(dataset_type, p=delta)
         

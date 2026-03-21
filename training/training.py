@@ -16,7 +16,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ambient_diffusion import NoiseScheduler, FurtherCorrupter, AmbientLoss, Sampler
 from module import Denoiser, FlatDenoiserNx2D, PointNetDenoiserNx2D
 from viz import viz_sample_2D
-from training.utils import TqdmToLogger
+
+try:
+    from training.utils import TqdmToLogger
+except Exception:
+    from utils import TqdmToLogger
 
 def load_dataset(path, batch_size=256, val_split=0.1):
     with open(path, "rb") as f:
@@ -92,12 +96,8 @@ def train(train_dataloader: DataLoader, val_dataloader: DataLoader,
     best_val_loss = float('inf')
     patience_counter = 0
 
-    if logger is not None:
-        tqdm_out = TqdmToLogger(logger,level=logging.INFO)
-    else:
-        tqdm_out = None
-
-    for epoch in tqdm(range(epochs), file=tqdm_out, desc="Epoch"):
+    pbar = tqdm(range(epochs), desc="Epoch")
+    for epoch in pbar:
         # Training loop
         module.train()
         epoch_train_loss = []
@@ -125,10 +125,10 @@ def train(train_dataloader: DataLoader, val_dataloader: DataLoader,
         epoch_train_losses.append(train_mean)
         epoch_val_losses.append(val_mean)
 
+        pbar.set_postfix(train=f"{train_mean:.4e}", val=f"{val_mean:.4e}")
+
         if logger:
             logger.info(f"Epoch {epoch+1}: train={train_mean:.4e}, val={val_mean:.4e}")
-        else:
-            print(f"Epoch {epoch+1}: train={train_mean:.4e}, val={val_mean:.4e}")
 
         # Early stopping
         if val_mean < best_val_loss:
