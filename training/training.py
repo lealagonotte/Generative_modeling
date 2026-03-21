@@ -95,7 +95,7 @@ def train(train_dataloader: DataLoader, val_dataloader: DataLoader,
         tqdm_out = TqdmToLogger(logger,level=logging.INFO)
     else:
         tqdm_out = None
-        
+
     for epoch in tqdm(range(epochs), file=tqdm_out, desc="Epoch"):
         # Training loop
         module.train()
@@ -125,7 +125,7 @@ def train(train_dataloader: DataLoader, val_dataloader: DataLoader,
         epoch_val_losses.append(val_mean)
 
         if logger:
-            tqdm.set_description_str(f"Epoch {epoch+1}: train={train_mean:.4e}, val={val_mean:.4e}")
+            tqdm.set_description_str(f"\nEpoch {epoch+1}: train={train_mean:.4e}, val={val_mean:.4e}")
             tqdm.refresh()
         else:
             print(f"Epoch {epoch+1}: train={train_mean:.4e}, val={val_mean:.4e}")
