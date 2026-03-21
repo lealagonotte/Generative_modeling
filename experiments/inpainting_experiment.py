@@ -167,7 +167,7 @@ def make_table(results, metric_list, folder):
 def plot_loss_curves(loss_curves, folder):
     viz_loss_curves(loss_curves, folder)
 
-def visualize_best_worse(best, worst, folder, n_samples, n_steps):
+def visualize_best_worse(dataset_type, best, worst, folder, n_samples, n_steps):
     for i, dico in enumerate([best, worst]):
         if i == 0:
             prefix = "best"
@@ -188,8 +188,8 @@ def visualize_best_worse(best, worst, folder, n_samples, n_steps):
         further_corrupter = dico["corrupter"]
         noise_scheduler = dico["scheduler"]
 
-        os.makedirs(str(folder / "viz"), exist_ok=True)
-        filename = folder / "viz" / f"{prefix}_sampling_{method}_{p:.4f}_{delta:.4f}.gif"
+        os.makedirs(str(folder / f"viz_{dataset_type}"), exist_ok=True)
+        filename = folder / f"viz_{dataset_type}" / f"{prefix}_sampling_{method}_{p:.4f}_{delta:.4f}.gif"
 
         # Generate sampling GIF with reference overlay
         LOGGER.info(f"Generating {prefix} sampling GIF...")
@@ -369,7 +369,7 @@ def main():
         LOGGER.info("Making visualizations..")
         plot_loss_curves(loss_curves, OUTPUT_FOLDER)
 
-        visualize_best_worse(best_overall, worst_overall, OUTPUT_FOLDER, 
+        visualize_best_worse(dataset_type, best_overall, worst_overall, OUTPUT_FOLDER, 
                             **viz_cfg)
 
         LOGGER.info(f"All {dataset_type} experiments completed.")
