@@ -93,7 +93,9 @@ def train(train_dataloader: DataLoader, val_dataloader: DataLoader,
 
     if logger is not None:
         tqdm_out = TqdmToLogger(logger,level=logging.INFO)
-
+    else:
+        tqdm_out = None
+        
     for epoch in tqdm(range(epochs), file=tqdm_out, desc="Epoch"):
         # Training loop
         module.train()
