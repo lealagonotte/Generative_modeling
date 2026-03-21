@@ -1,6 +1,6 @@
 """Module to define visualizations and animations for 2D diffusion sampling."""
 
-import os
+import os, sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -12,7 +12,10 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import seaborn as sns
 
-from ambient_diffusion import Sampler
+BASE_DIR = str(Path(__file__).resolve().parent)
+sys.path.append(BASE_DIR)
+
+from training.ambient_diffusion import Sampler
 
 
 sns.set_theme(style="whitegrid")
