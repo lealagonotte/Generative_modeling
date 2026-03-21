@@ -7,6 +7,7 @@ import logging
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
+from tqdm.auto import tqdm
 from pathlib import Path
 
 # Ensure sibling modules are importable regardless of CWD

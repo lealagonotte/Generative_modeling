@@ -4,7 +4,7 @@
 
 import logging
 import time
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import io
 
 class TqdmToLogger(io.StringIO):

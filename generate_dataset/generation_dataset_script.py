@@ -8,6 +8,7 @@ Supports two modes:
 import argparse
 import os, sys
 import pickle
+from tqdm.auto import tqdm
 from pathlib import Path
 import numpy as np
 from sklearn.datasets import make_moons, make_swiss_roll
