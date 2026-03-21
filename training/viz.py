@@ -15,7 +15,7 @@ import seaborn as sns
 BASE_DIR = str(Path(__file__).resolve().parent)
 sys.path.append(BASE_DIR)
 
-from training.ambient_diffusion import Sampler
+from ambient_diffusion import Sampler
 
 
 sns.set_theme(style="whitegrid")

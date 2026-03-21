@@ -114,8 +114,8 @@ def sliced_wasserstein_distance(
     """
     _validate_p(p)
 
-    x = x.float()
-    y = y.float()
+    x = x.float().detach().cpu()
+    y = y.float().detach().cpu()
 
     if x.ndim == 1:
         x = x.unsqueeze(1)

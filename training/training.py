@@ -83,19 +83,23 @@ def train(train_dataloader: DataLoader, val_dataloader: DataLoader,
             noise_scheduler: NoiseScheduler,
             further_corrupter: FurtherCorrupter,
             method: str = "ambient",
-            logger: bool = False
+            logger: None | logging.Logger = None
             ):
     epoch_train_losses = []
     epoch_val_losses = []
     best_val_loss = float('inf')
     patience_counter = 0
 
-    for epoch in range(epochs):
+    if logger is not None:
+        tqdm_out = TqdmToLogger(logger,level=logging.INFO)
+
+    for epoch in tqdm(range(epochs), file=tqdm_out, desc="Epoch"):
         # Training loop
         module.train()
         epoch_train_loss = []
         for i, batch in enumerate(train_dataloader):
-            loss_value = batch_step(module, batch, loss, noise_scheduler, further_corrupter, method)
+            loss_value = batch_step(module, batch, loss, noise_scheduler, 
+            further_corrupter, method)
 
             optimizer.zero_grad()
             loss_value.backward()
@@ -118,7 +122,8 @@ def train(train_dataloader: DataLoader, val_dataloader: DataLoader,
         epoch_val_losses.append(val_mean)
 
         if logger:
-            logging.info(f"Epoch {epoch+1}: train={train_mean:.4e}, val={val_mean:.4e}")
+            tqdm.set_description_str(f"Epoch {epoch+1}: train={train_mean:.4e}, val={val_mean:.4e}")
+            tqdm.refresh()
         else:
             print(f"Epoch {epoch+1}: train={train_mean:.4e}, val={val_mean:.4e}")
 
@@ -130,7 +135,7 @@ def train(train_dataloader: DataLoader, val_dataloader: DataLoader,
             patience_counter += 1
             if patience_counter >= patience:
                 if logger:
-                    logging.info(f"Early stopping at epoch {epoch+1}")
+                    logger.info(f"Early stopping at epoch {epoch+1}")
                 else:
                     print(f"Early stopping at epoch {epoch+1}")
                 break
