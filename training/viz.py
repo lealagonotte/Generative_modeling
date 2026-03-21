@@ -126,6 +126,111 @@ def viz_sample_2D(
     print(f"Saved sampling GIF to {output_path}")
 
 
+def viz_sample_Nx2D(
+    module,
+    noise_scheduler,
+    further_corrupter,
+    n_clouds=9,         # Will arrange in a sqrt(n_clouds) x sqrt(n_clouds) grid
+    n_points=1000,       # Pts per cloud
+    n_steps=100,
+    output_path="sampling_Nx2D.gif",
+    fps=16,
+    n_frames=None,
+    ref_data=None,      # (n_ref_clouds, N, 2)
+    xlim=None,
+    ylim=None,
+):
+    """
+    Create a GIF showing the reverse diffusion sampling process for Nx2D point clouds.
+    Plots multiple clouds in a small grid.
+
+    Args:
+        module          : trained Denoiser (FlatDenoiserNx2D or PointNetDenoiserNx2D)
+        noise_scheduler : NoiseScheduler instance
+        further_corrupter: FurtherCorrupter instance
+        n_clouds        : number of clouds to sample (ideally a perfect square like 4, 9, 16)
+        n_points        : points per cloud (N)
+        n_steps         : number of reverse SDE steps
+        output_path     : path to save the .gif
+        fps             : frames per second
+        n_frames        : number of frames in the GIF (subsampled from n_steps)
+        ref_data        : optional reference data array
+        xlim, ylim      : axis limits limits
+    """
+    if n_frames is None:
+        n_frames = min(int(0.5*n_steps), 120)
+
+    device = next(module.parameters()).device
+    shape = (n_clouds, n_points, 2)
+
+    sampler = Sampler("fms")
+    A = further_corrupter.init_operator(shape, device)
+    A_sample = further_corrupter.get_operator(A)
+
+    module.eval()
+    trajectory, timesteps = sampler.sample_with_trajectory(
+        shape, n_steps, A_sample, module, noise_scheduler
+    )
+    # trajectory: (n_steps, n_clouds, N, 2)
+    trajectory = trajectory.numpy()
+    timesteps = timesteps.numpy()
+
+    total_steps = trajectory.shape[0]
+    frame_indices = np.unique(np.linspace(0, total_steps - 1, n_frames, dtype=int))
+
+    if xlim is None:
+        all_x = trajectory[:, :, :, 0]
+        margin = 0.1 * (all_x.max() - all_x.min())
+        xlim = (all_x.min() - margin, all_x.max() + margin)
+    if ylim is None:
+        all_y = trajectory[:, :, :, 1]
+        margin = 0.1 * (all_y.max() - all_y.min())
+        ylim = (all_y.min() - margin, all_y.max() + margin)
+
+    sample_color = sns.color_palette("mako", as_cmap=False, n_colors=3)[1]
+    ref_color = "#8b8989"
+
+    grid_size = int(np.ceil(np.sqrt(n_clouds)))
+    fig, axes = plt.subplots(grid_size, grid_size, figsize=(2 * grid_size, 2 * grid_size))
+    if grid_size == 1:
+        axes = np.array([[axes]])
+    elif axes.ndim == 1:
+        axes = axes.reshape(grid_size, grid_size)
+
+    def update(frame_idx):
+        step = frame_indices[frame_idx]
+        clouds = trajectory[step]
+        t_val = timesteps[min(step, len(timesteps) - 1)]
+
+        fig.suptitle(f"Step {step}/{total_steps - 1}  |  t = {t_val:.4f}", fontsize=14)
+
+        for i in range(grid_size * grid_size):
+            r, c = divmod(i, grid_size)
+            ax = axes[r, c]
+            ax.clear()
+
+            if i < n_clouds:
+                points = clouds[i]
+                if ref_data is not None and i < len(ref_data):
+                    ax.scatter(ref_data[i, :, 0], ref_data[i, :, 1], 
+                               s=1, alpha=0.15, c=ref_color, rasterized=True)
+
+                ax.scatter(points[:, 0], points[:, 1], s=4, alpha=0.5, c=[sample_color], edgecolors="none")
+
+            ax.set_xlim(xlim)
+            ax.set_ylim(ylim)
+            ax.set_aspect("equal")
+            ax.set_xticks([])
+            ax.set_yticks([])
+
+    anim = animation.FuncAnimation(
+        fig, update, frames=len(frame_indices), interval=1000 // fps,
+    )
+    anim.save(output_path, writer="pillow", fps=fps)
+    plt.close(fig)
+    print(f"Saved Nx2D sampling GIF to {output_path}")
+
+
 def _plot_mean_std(ax, epochs, mean, std, color, label):
     ax.plot(epochs, mean, color=color, label=label)
     ax.fill_between(epochs, mean - std, mean + std, color=color, alpha=0.2)

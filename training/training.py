@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from ambient_diffusion import NoiseScheduler, FurtherCorrupter, AmbientLoss, Sampler
-from module import Denoiser
+from module import Denoiser, FlatDenoiserNx2D, PointNetDenoiserNx2D
 from viz import viz_sample_2D
 
 def load_dataset(path, batch_size=256, val_split=0.1):
@@ -160,6 +160,12 @@ def main():
     parser.add_argument("--beta_max", type=float, default=20.0, help="Variance Preserving parameter")
     parser.add_argument("--beta_min", type=float, default=0.1, help="Variance Preserving parameter")
     parser.add_argument("--further_p", type=float, default=0.1, help="Further corruption probability")
+    
+    # Model args
+    parser.add_argument("--model", type=str, default="mlp", choices=["mlp", "flat_nx2d", "pointnet_nx2d"])
+    parser.add_argument("--n_points_per_cloud", type=int, default=None, help="Required for Nx2D models")
+    parser.add_argument("--data_dim", type=int, default=2, help="Data dimension (usually 2)")
+    
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--patience", type=int, default=20)
     parser.add_argument("--batch_size", type=int, default=256)
@@ -196,7 +202,15 @@ def main():
     else:
         raise ValueError(f"Unknown dataset corruption type {dataset_type}. Must be eitehr 'inpainting' or 'gaussian'.")
     
-    module = Denoiser(data_dim=2).to(device)
+    if args.model == "mlp":
+        module = Denoiser(data_dim=args.data_dim).to(device)
+    elif args.model == "flat_nx2d":
+        assert args.n_points_per_cloud is not None, "n_points_per_cloud must be set for flat_nx2d"
+        module = FlatDenoiserNx2D(n_points=args.n_points_per_cloud, data_dim=args.data_dim).to(device)
+    elif args.model == "pointnet_nx2d":
+        module = PointNetDenoiserNx2D(data_dim=args.data_dim).to(device)
+    else:
+        raise ValueError(f"Unknown model type {args.model}")
     
     ambient_loss = AmbientLoss(further_corrupter.apply_operator_func)
     optimizer = torch.optim.Adam(module.parameters(), lr=args.lr)

@@ -1,0 +1,57 @@
+{
+    "output_folder": "results/nx2d_results_test",
+    "n_replicates": 1,
+    "metrics": ["wd", "swd", "cd"],
+    "datasets":{
+        "type": "inpainting",
+        "prevent_zero": true,
+        "mode": "Nx2D",
+        "p": [0.0, 0.2, 0.4, 0.6, 0.8],
+        "delta": [0.0, 0.1, 0.3],
+        "X_params":{
+            "two_moons":{
+                "n_clouds": 150,
+                "n_points_per_cloud": 500,
+                "noise": 0.05,
+                "apply_rotation": true,
+                "apply_translation": true,
+                "apply_scale": true
+            },
+            "swiss_roll":{
+                "n_clouds": 150,
+                "n_points_per_cloud": 500,
+                "noise": 0.5,
+                "apply_rotation": true,
+                "apply_translation": true,
+                "apply_scale": true
+            }
+        }
+    },
+    "training":{
+        "batch_size": 16,
+        "schedule": "vp",
+        "schedule_kwargs": {
+            "beta_min": 0.1,
+            "beta_max": 20.0
+        },
+        "module_kwargs":{
+            "model": "flat_nx2d",
+            "n_points_per_cloud": 200,
+            "data_dim": 2,
+            "n_layers": 3,
+            "latent_dim": 256
+        },
+        "epochs": 100,
+        "patience": 15,
+        "adam_kwargs": {
+            "lr": 1e-3
+        },
+        "sampler": "fms",
+        "n_samples": 9,
+        "n_steps": 100
+    },
+    "viz":{
+        "n_samples": 9,
+        "n_steps": 100
+    }
+}

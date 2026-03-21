@@ -44,8 +44,10 @@ class NoiseScheduler(object):
 
         def apply_noise(x0, t, eps):
             sigma_t = noise_func(t)
-            # sigma_t: (batch,) -> unsqueeze for broadcasting with (batch, D)
-            return x0 + sigma_t.unsqueeze(-1) * eps
+            # reshape for broadcasting: (batch, 1) or (batch, 1, 1)
+            shape = [sigma_t.shape[0]] + [1] * (x0.dim() - 1)
+            sigma_t = sigma_t.view(shape)
+            return x0 + sigma_t * eps
 
         return noise_func, apply_noise
 
@@ -66,7 +68,12 @@ class NoiseScheduler(object):
             log_mean_coeff = -0.5 * (beta_min * t + 0.5 * (beta_max - beta_min) * t ** 2)
             alpha_t = torch.exp(log_mean_coeff)
             sigma_t = torch.sqrt(1.0 - alpha_t ** 2)
-            return alpha_t.unsqueeze(-1) * x0 + sigma_t.unsqueeze(-1) * eps
+            
+            shape = [alpha_t.shape[0]] + [1] * (x0.dim() - 1)
+            alpha_t = alpha_t.view(shape)
+            sigma_t = sigma_t.view(shape)
+            
+            return alpha_t * x0 + sigma_t * eps
 
         return noise_func, apply_noise
 
@@ -81,7 +88,9 @@ class NoiseScheduler(object):
 
         def apply_noise(x0, t, eps):
             sigma_t = noise_func(t)
-            return x0 + sigma_t.unsqueeze(-1) * eps
+            shape = [sigma_t.shape[0]] + [1] * (x0.dim() - 1)
+            sigma_t = sigma_t.view(shape)
+            return x0 + sigma_t * eps
 
         return noise_func, apply_noise
 
@@ -140,7 +149,7 @@ class FurtherCorrupter(object):
             return A * B
 
         def apply_operator_func(further_A, x):
-            # further_A: (batch, D), x: (batch, D)
+            # further_A: (batch, ...) binary mask, x: (batch, ...)
             return further_A * x
 
         return init_operator_func, operator_func, apply_operator_func
@@ -169,7 +178,7 @@ class FurtherCorrupter(object):
             return A * B
 
         def apply_operator_func(further_A, x):
-            # further_A: (batch, D), x: (batch, D)
+            # further_A: (batch, ...) binary mask, x: (batch, ...)
             return further_A * x
 
         return init_operator_func, operator_func, apply_operator_func
@@ -205,6 +214,9 @@ class FurtherCorrupter(object):
 
         def apply_operator_func(further_A, x):
             # further_A: (batch, m', d), x: (batch, d)
+            # Currently only supported for 2D inputs, not Nx2D
+            if x.dim() > 2:
+                raise NotImplementedError("Gaussian corruption not supported for Nx2D inputs yet.")
             return torch.bmm(further_A, x.unsqueeze(-1)).squeeze(-1)
 
         return init_operator_func, operator_func, apply_operator_func
@@ -299,8 +311,10 @@ class Sampler(object):
             with torch.no_grad():
                 pred_x0 = module(A, x_t, t_curr)
 
-            sigma_t = sigma_t.unsqueeze(-1)
-            sigma_next = sigma_next.unsqueeze(-1)
+            # Dynamic reshaping for broadcasting to x_t shape
+            shape = [sigma_t.size(0)] + [1] * (x_t.dim() - 1)
+            sigma_t = sigma_t.view(shape)
+            sigma_next = sigma_next.view(shape)
 
             ratio_sigma = sigma_next / (sigma_t + eps) # stablize ratio for low sigma values
 
@@ -375,5 +389,8 @@ class AmbientLoss(nn.Module):
         A_predx0 = self.apply_opertor_func(A, predicted_x0)
 
         diff = Ax0 - A_predx0
+        
+        # Flatten and sum all dimensions except batch
+        diff = diff.view(diff.size(0), -1)
         per_sample_loss = torch.sum(diff ** 2, dim=-1)  # (batch,)
         return 0.5 * torch.mean(per_sample_loss)

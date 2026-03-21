@@ -148,3 +148,40 @@ def sliced_wasserstein_distance(
         seed=seed,
     )
     return float(sw)
+
+
+################################ Chamfer Distance ################################
+
+def chamfer_distance(
+    P1: torch.Tensor,
+    P2: torch.Tensor,
+) -> float:
+    """
+    Computes the Chamfer distance between two batches of point clouds.
+
+    Args:
+        P1 : (batch, N, d) point clouds
+        P2 : (batch, M, d) point clouds
+
+    Returns:
+        float : Average Chamfer distance across the batch.
+    """
+    if P1.dim() != 3 or P2.dim() != 3:
+        raise ValueError(f"Chamfer distance expects 3D tensors (batch, N, d). Got {P1.dim()}D and {P2.dim()}D.")
+
+    if P1.shape[2] != P2.shape[2]:
+        raise ValueError(f"P1 and P2 must have the same dimension d. Got {P1.shape[2]} and {P2.shape[2]}.")
+
+    # (batch, N, M) pairwise squared distances
+    diff = P1.unsqueeze(2) - P2.unsqueeze(1)
+    dist = torch.sum(diff ** 2, dim=-1)
+
+    # For each point in P1, min distance to P2
+    min_dist_1_to_2 = torch.min(dist, dim=2)[0]  # (batch, N)
+    
+    # For each point in P2, min distance to P1
+    min_dist_2_to_1 = torch.min(dist, dim=1)[0]  # (batch, M)
+
+    # Average over points, then over batch
+    chamfer_loss = torch.mean(min_dist_1_to_2, dim=1) + torch.mean(min_dist_2_to_1, dim=1)
+    return float(torch.mean(chamfer_loss).item())

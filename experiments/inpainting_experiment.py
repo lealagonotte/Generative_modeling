@@ -16,19 +16,29 @@ from torch.optim import Adam
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
-from generate_dataset.generate_dataset import generate_data, inpainting_corruption, inpainting_corruption_pointwise
-from training.viz import viz_sample_2D, viz_loss_curves
+from generate_dataset.generation_dataset_script import generate_data, generate_Nx2D_data
+from generate_dataset.utils import inpainting_corruption, inpainting_corruption_pointwise, inpainting_corruption_Nx2D, inpainting_corruption_pointwise_Nx2D
+from training.viz import viz_sample_2D, viz_sample_Nx2D, viz_loss_curves
 from training.ambient_diffusion import NoiseScheduler, FurtherCorrupter, Sampler, AmbientLoss
-from training.module import Denoiser
+from training.module import Denoiser, FlatDenoiserNx2D, PointNetDenoiserNx2D
 from training.training import train, load_dataset
-from training.metrics import wasserstein_distance, sliced_wasserstein_distance
+from training.metrics import wasserstein_distance, sliced_wasserstein_distance, chamfer_distance
 
-METRIC_DICT = {"wd": wasserstein_distance, "swd": sliced_wasserstein_distance}
+METRIC_DICT = {"wd": wasserstein_distance, "swd": sliced_wasserstein_distance, "cd": chamfer_distance}
 
 def compute_metrics(dataset_path, metric_list, sampler, n_samples, n_steps, 
                     module, further_corrupter, noise_scheduler):
+    with open(dataset_path, "rb") as f:
+        ref_data = pkl.load(f)
+    
+    mode = ref_data.get("mode", "2D")
     device = next(module.parameters()).device
-    shape = (n_samples, 2)
+    
+    if mode == "Nx2D":
+        n_points_per_cloud = ref_data.get("n_points_per_cloud", 200)
+        shape = (n_samples, n_points_per_cloud, 2)
+    else:
+        shape = (n_samples, 2)
 
     # Sample mask (same logic as training.py sample())
     A = further_corrupter.init_operator(shape, device)
@@ -78,7 +88,19 @@ def launch_experiments(dataset_path, p, delta_list,
             logging.info(f"Using {delta} further corruption..")
             further_corrupter = FurtherCorrupter(dataset_type, p=delta)
         
-            module = Denoiser(**module_kwargs).to(device)
+            training_kwargs = module_kwargs.copy()
+            model_type = training_kwargs.pop("model", "mlp")
+            data_dim = training_kwargs.pop("data_dim", 2)
+            
+            if model_type == "mlp":
+                module = Denoiser(data_dim=data_dim, **training_kwargs).to(device)
+            elif model_type == "flat_nx2d":
+                n_points = training_kwargs.pop("n_points_per_cloud", 200)
+                module = FlatDenoiserNx2D(n_points=n_points, data_dim=data_dim, **training_kwargs).to(device)
+            elif model_type == "pointnet_nx2d":
+                module = PointNetDenoiserNx2D(data_dim=data_dim, **training_kwargs).to(device)
+            else:
+                raise ValueError(f"Unknown model type {model_type}")
             
             ambient_loss = AmbientLoss(further_corrupter.apply_operator_func)
             optimizer = Adam(module.parameters(), **adam_kwargs)
@@ -147,6 +169,7 @@ def visualize_best_worse(best, worst, folder, n_samples, n_steps):
             ref_data = pkl.load(f)
         X_ref = ref_data["X"]
         corruption_type = ref_data["type"]
+        mode = ref_data.get("mode", "2D")
         
         method = dico["method"]
         p = dico["p"]
@@ -159,13 +182,22 @@ def visualize_best_worse(best, worst, folder, n_samples, n_steps):
         filename = folder / "viz" / f"{prefix}_sampling_{method}_{p:.4f}_{delta:.4f}.gif"
 
         # Generate sampling GIF with reference overlay
-        if corruption_type in ["inpainting", "gaussian"]:
-            viz_sample_2D(
-                module, noise_scheduler, further_corrupter,
-                n_samples=n_samples, n_steps=n_steps,
-                output_path=str(filename),
-                ref_data=X_ref,
-            )
+        if corruption_type in ["inpainting", "gaussian", "inpainting_pw"]:
+            if mode == "Nx2D":
+                viz_sample_Nx2D(
+                    module, noise_scheduler, further_corrupter,
+                    n_clouds=9, n_points=ref_data.get("n_points_per_cloud", 200),
+                    n_steps=n_steps,
+                    output_path=str(filename),
+                    ref_data=X_ref[:9],
+                )
+            else:
+                viz_sample_2D(
+                    module, noise_scheduler, further_corrupter,
+                    n_samples=n_samples, n_steps=n_steps,
+                    output_path=str(filename),
+                    ref_data=X_ref,
+                )
 
 
 def load_config(path: str | Path):
@@ -180,26 +212,41 @@ def load_config(path: str | Path):
 def make_seeds(n):
     return np.random.randint(0,1000001, n)
 
-def make_inpainting_datasets(inpainting_type, p_list, prevent_zero, 
-                            dataset_type, X_params, folder):
-
-    if inpainting_type == "inpainting":
-        func = inpainting_corruption
-        kwargs = {"prevent_zero":prevent_zero}
-    elif inpainting_type == "inpainting_pw":
-        func = inpainting_corruption_pointwise
-        kwargs = {}
+def make_inpainting_datasets(datasets_cfg, dataset_type, folder):
+    inpainting_type = datasets_cfg["type"]
+    prevent_zero = datasets_cfg.get("prevent_zero", True)
+    p_list = datasets_cfg["p"]
+    mode = datasets_cfg.get("mode", "2D")
+    X_params = datasets_cfg["X_params"][dataset_type]
 
     dataset_folder = folder / "datasets"
     os.makedirs(str(dataset_folder), exist_ok=True)
-
-    X_config = X_params[dataset_type]
     
     traces = []
+    
+    if mode == "2D":
+        if inpainting_type == "inpainting":
+            func = inpainting_corruption
+            kwargs = {"prevent_zero": prevent_zero}
+        elif inpainting_type == "inpainting_pw":
+            func = inpainting_corruption_pointwise
+            kwargs = {}
+    elif mode == "Nx2D":
+        if inpainting_type == "inpainting":
+            func = inpainting_corruption_Nx2D
+            kwargs = {"prevent_zero": prevent_zero}
+        elif inpainting_type == "inpainting_pw":
+            func = inpainting_corruption_pointwise_Nx2D
+            kwargs = {}
+
     for p in p_list:
         for seed in SEEDS:
-            X_config["seed"] = seed
-            X = generate_data(dataset_type, **X_config)
+            X_params["seed"] = seed
+            
+            if mode == "2D":
+                X = generate_data(dataset_type, **X_params)
+            else:
+                X = generate_Nx2D_data(dataset_type, **X_params)
 
             kwargs["p"] = p
             rng = np.random.default_rng(seed + 1)
@@ -209,7 +256,9 @@ def make_inpainting_datasets(inpainting_type, p_list, prevent_zero,
             # Save
             filename = dataset_folder / f"{dataset_type}_{p}_{seed}.pkl"
             
-            data = {"type": dataset_type,"X": X, "A": A}
+            data = {"mode": mode, "type": inpainting_type, "X": X, "A": A}
+            if mode == "Nx2D":
+                data["n_points_per_cloud"] = X_params.get("n_points_per_cloud", 200)
 
             with open(str(filename), "wb") as f:
                 pkl.dump(data, f)
@@ -246,13 +295,8 @@ def main():
     ranking_metric = metric_list[0]
 
     datasets_cfg = cfg_dict["datasets"]
-
-    # Making datasets
     inpainting_type = datasets_cfg["type"]
-    prevent_zero = datasets_cfg["prevent_zero"]
-    p_list = datasets_cfg["p"]
     delta_list = datasets_cfg["delta"]
-    X_params = datasets_cfg["X_params"]
 
     # Making output_folder
     folder = cfg_dict["output_folder"]
@@ -278,8 +322,7 @@ def main():
     for dataset_type in ["two_moons", "swiss_roll"]:
 
         logging.info(f"Making {dataset_type.upper()} datasets..")
-        datasets = make_inpainting_datasets(inpainting_type, p_list, prevent_zero, 
-                                            dataset_type, X_params, OUTPUT_FOLDER)
+        datasets = make_inpainting_datasets(datasets_cfg, dataset_type, OUTPUT_FOLDER)
 
         results_metrics_list = []
         best_metric = np.inf
