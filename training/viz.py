@@ -33,6 +33,7 @@ def viz_sample_2D(
     ref_data=None,
     xlim=None,
     ylim=None,
+    addon=None,
 ):
     """
     Create a GIF showing the reverse diffusion sampling process for 2D points.
@@ -92,6 +93,11 @@ def viz_sample_2D(
     # Build animation
     fig, ax = plt.subplots(figsize=(6, 6))
 
+    if addon is not None:
+        addon += " | "
+    else:
+        addon = ""
+
     def update(frame_idx):
         ax.clear()
         step = frame_indices[frame_idx]
@@ -117,7 +123,7 @@ def viz_sample_2D(
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
         ax.set_aspect("equal")
-        ax.set_title(f"Step {step}/{total_steps - 1}  |  t = {t_val:.4f}", fontsize=12)
+        ax.set_title(f"{addon}Step {step}/{total_steps - 1}  |  t = {t_val:.4f}", fontsize=12)
         ax.set_xlabel("$x_1$")
         ax.set_ylabel("$x_2$")
 
@@ -147,7 +153,7 @@ def viz_sample_2D(
         ax_static.set_xlim(xlim)
         ax_static.set_ylim(ylim)
         ax_static.set_aspect("equal")
-        ax_static.set_title(f"Step {step}/{total_steps - 1}  |  t = {t_val:.4f}", fontsize=12)
+        ax_static.set_title(f"{addon}Step {step}/{total_steps - 1}  |  t = {t_val:.4f}", fontsize=12)
         ax_static.set_xlabel("$x_1$")
         if idx == 0:
             ax_static.set_ylabel("$x_2$")
@@ -172,6 +178,7 @@ def viz_sample_Nx2D(
     ref_data=None,      # (n_ref_clouds, N, 2)
     xlim=None,
     ylim=None,
+    addon=None,
 ):
     """
     Create a GIF showing the reverse diffusion sampling process for Nx2D point clouds.
@@ -230,12 +237,17 @@ def viz_sample_Nx2D(
     elif axes.ndim == 1:
         axes = axes.reshape(grid_size, grid_size)
 
+    if addon is not None:
+        addon += " | "
+    else:
+        addon = ""
+
     def update(frame_idx):
         step = frame_indices[frame_idx]
         clouds = trajectory[step]
         t_val = timesteps[min(step, len(timesteps) - 1)]
 
-        fig.suptitle(f"Step {step}/{total_steps - 1}  |  t = {t_val:.4f}", fontsize=14)
+        fig.suptitle(f"{addon}Step {step}/{total_steps - 1}  |  t = {t_val:.4f}", fontsize=14)
 
         for i in range(grid_size * grid_size):
             r, c = divmod(i, grid_size)
@@ -280,7 +292,7 @@ def viz_sample_Nx2D(
             ax_static.set_xlim(xlim)
             ax_static.set_ylim(ylim)
             ax_static.set_aspect("equal")
-            ax_static.set_title(f"Step {step}/{total_steps - 1}  |  t = {t_val:.4f}", fontsize=12)
+            ax_static.set_title(f"{addon}Step {step}/{total_steps - 1}  |  t = {t_val:.4f}", fontsize=12)
             ax_static.set_xticks([])
             ax_static.set_yticks([])
 
@@ -299,7 +311,10 @@ def _plot_mean_std(ax, epochs, mean, std, color, label):
 def _group_loss_curves(loss_curves):
     grouped = defaultdict(list)
     for entry in loss_curves:
-        key = (entry["method"], entry["p"], entry["delta"])
+        if "p" in entry:
+            key = (entry["method"], entry["p"], entry["delta"])
+        else:
+            key = (entry["method"], entry["m"], entry["m_prime"])
         grouped[key].append(entry)
     return grouped
 
@@ -315,30 +330,41 @@ def viz_loss_curves(loss_curves, output_folder):
     viz_dir = Path(output_folder)
     os.makedirs(str(viz_dir), exist_ok=True)
 
+    if not loss_curves:
+        return
+
     grouped = _group_loss_curves(loss_curves)
     method_colors = {"ambient": sns.color_palette()[0], "naive": sns.color_palette()[3]}
 
-    # --- (a) Ambient vs Naive per (p, delta) setting ---
-    settings = set()
-    for (method, p, delta) in grouped:
-        settings.add((p, delta))
+    is_inpainting = "p" in loss_curves[0]
 
-    for p, delta in sorted(settings):
+    # --- (a) Ambient vs Naive per (p, delta) or (m, m_prime) setting ---
+    settings = set()
+    for key in grouped:
+        settings.add((key[1], key[2]))
+
+    for val1, val2 in sorted(settings):
         fig, axes = plt.subplots(1, 2, figsize=(12, 5))
         for split_idx, split in enumerate(["train", "val"]):
             ax = axes[split_idx]
             for method in ["ambient", "naive"]:
-                key = (method, p, delta)
+                key = (method, val1, val2)
                 if key not in grouped:
                     continue
                 epochs, mean, std = _compute_mean_std(grouped[key], split)
                 _plot_mean_std(ax, epochs, mean, std, method_colors[method], method)
             ax.set_xlabel("Epoch")
             ax.set_ylabel("Loss")
-            ax.set_title(f"{split.capitalize()} loss  (p={p:.3f}, δ={delta:.3f})")
+            if is_inpainting:
+                ax.set_title(f"{split.capitalize()} loss  ($p={val1:.3f}$, $\\delta={val2:.3f}$)")
+            else:
+                ax.set_title(f"{split.capitalize()} loss  ($m={val1}$, $m'={val2}$)")
             ax.legend()
         fig.tight_layout()
-        fname = viz_dir / f"loss_ambient_vs_naive_p{p:.4f}_delta{delta:.4f}.png"
+        if is_inpainting:
+            fname = viz_dir / f"loss_ambient_vs_naive_p{val1:.4f}_delta{val2:.4f}.png"
+        else:
+            fname = viz_dir / f"loss_ambient_vs_naive_m{val1}_m_prime{val2}.png"
         fig.savefig(str(fname), dpi=150)
         plt.close(fig)
 
@@ -348,12 +374,15 @@ def viz_loss_curves(loss_curves, output_folder):
     for method in ["ambient", "naive"]:
         fig, axes = plt.subplots(1, 2, figsize=(12, 5))
         color_idx = 0
-        for p, delta in sorted(settings):
-            key = (method, p, delta)
+        for val1, val2 in sorted(settings):
+            key = (method, val1, val2)
             if key not in grouped:
                 continue
             color = cmap[color_idx % len(cmap)]
-            label = f"p={p:.3f}, δ={delta:.3f}"
+            if is_inpainting:
+                label = f"$p={val1:.3f}$, $\\delta={val2:.3f}$"
+            else:
+                label = f"$m={val1}$, $m'={val2}$"
             for split_idx, split in enumerate(["train", "val"]):
                 epochs, mean, std = _compute_mean_std(grouped[key], split)
                 _plot_mean_std(axes[split_idx], epochs, mean, std, color, label)
@@ -361,7 +390,7 @@ def viz_loss_curves(loss_curves, output_folder):
         for split_idx, split in enumerate(["train", "val"]):
             axes[split_idx].set_xlabel("Epoch")
             axes[split_idx].set_ylabel("Loss")
-            axes[split_idx].set_title(f"{method.capitalize()} — {split.capitalize()} loss")
+            axes[split_idx].set_title(f"{method.capitalize()} \u2014 {split.capitalize()} loss")
             axes[split_idx].legend(fontsize=8)
         fig.tight_layout()
         fname = viz_dir / f"loss_all_{method}.png"

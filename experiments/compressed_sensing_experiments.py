@@ -197,6 +197,7 @@ def visualize_best_worse(dataset_type, best, worst, folder, n_samples, n_steps):
 
         # Generate sampling GIF with reference overlay
         LOGGER.info(f"Generating {prefix} sampling GIF...")
+        addon = f"$m={m}, m'={m_prime}$"
         if corruption_type == "compressed_sensing":
             if mode == "Nx2D":
                 viz_sample_Nx2D(
@@ -205,6 +206,7 @@ def visualize_best_worse(dataset_type, best, worst, folder, n_samples, n_steps):
                     n_steps=n_steps,
                     output_path=str(filename),
                     ref_data=X_ref[:9],
+                    addon=addon,
                 )
             else:
                 viz_sample_2D(
@@ -212,6 +214,7 @@ def visualize_best_worse(dataset_type, best, worst, folder, n_samples, n_steps):
                     n_samples=n_samples, n_steps=n_steps,
                     output_path=str(filename),
                     ref_data=X_ref,
+                    addon=addon,
                 )
 
 
