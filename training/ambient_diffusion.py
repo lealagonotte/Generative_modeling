@@ -138,7 +138,7 @@ class FurtherCorrupter(object):
             prevent_zero = True
 
         def init_operator_func(shape, device):
-            X = np.zeros(shape)
+            X = np.zeros(shape, dtype=np.float32)
             if len(shape) == 3:
                 _, A = inpainting_corruption_Nx2D(X, 
                                          p=p, 
@@ -174,7 +174,7 @@ class FurtherCorrupter(object):
         rng = np.random.default_rng(seed + 1) 
 
         def init_operator_func(shape, device):
-            X = np.zeros(shape)
+            X = np.zeros(shape, dtype=np.float32)
 
             if len(shape) == 3:
                 _, A = inpainting_corruption_pointwise_Nx2D(X, 
@@ -214,7 +214,7 @@ class FurtherCorrupter(object):
             m = 2
 
         def init_operator_func(shape, device):
-            X = np.zeros(shape)
+            X = np.zeros(shape, dtype=np.float32)
             _, A = compressed_sensing_corruption(X, 
                                          m=m, 
                                          rng=rng)  

@@ -61,7 +61,7 @@ def compute_metrics(dataset_path, metric_list, sampler, n_samples, n_steps,
 
     with open(dataset_path, "rb") as f:
         ref_data = pkl.load(f)
-    X_ref = from_numpy(ref_data["X"])
+    X_ref = from_numpy(ref_data["X"]).to(torch.float32)
 
     metric_results = {}
     for metric in metric_list:
@@ -256,7 +256,7 @@ def make_compressed_sensing_datasets(datasets_cfg, dataset_type, folder):
                 if mode == "2D":
                     m_val = int(m * X.shape[1])
                 elif mode == "Nx2D":
-                    m_val = int(m * X.shape[1] * X.shape[2])
+                    m_val = int(m * X.shape[1])
                 else:
                     m_val = int(m * X.shape[-1])
             else:

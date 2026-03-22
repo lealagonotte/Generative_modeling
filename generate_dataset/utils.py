@@ -82,6 +82,7 @@ def compressed_sensing_corruption(X, m=2, rng=None):
         X = X.reshape(N, n*d)
         d = n*d
 
+    X = np.asarray(X, dtype=np.float32)
     A_matrices = rng.standard_normal(size=(N, m, d), dtype=np.float32)          # (N, m, d)
     Y = np.einsum('nmd,nd->nm', A_matrices, X, dtype=np.float32)                # (N, m)
     

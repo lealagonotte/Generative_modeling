@@ -188,7 +188,7 @@ def main():
             Y, A = inpainting_corruption_pointwise_Nx2D(X, p=args.p, rng=rng)
         elif corruption == "compressed_sensing":
             if args.m < 1:
-                args.m = int(args.m * X.shape[1] * X.shape[2])
+                args.m = int(args.m * X.shape[1])
             else:
                 args.m = int(args.m)
             Y, A = compressed_sensing_corruption(X, m=args.m, rng=rng)
