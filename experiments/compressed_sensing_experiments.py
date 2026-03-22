@@ -298,6 +298,7 @@ def main():
     ranking_metric = metric_list[0]
 
     datasets_cfg = cfg_dict["datasets"]
+    dataset_type = "compressed_sensing"
     mode = datasets_cfg.get("mode", "2D")
     m_prime_list = datasets_cfg["m_prime"]
 
