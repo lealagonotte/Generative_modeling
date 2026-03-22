@@ -197,7 +197,7 @@ def visualize_best_worse(dataset_type, best, worst, folder, n_samples, n_steps):
 
         # Generate sampling GIF with reference overlay
         LOGGER.info(f"Generating {prefix} sampling GIF...")
-        addon = f"$p={p:.3f}, \\delta={delta:.3f}$"
+        addon = f"$p={p:.2f}, \\delta={delta:.2f}$"
         if corruption_type in ["inpainting", "inpainting_pw"]:
             if mode == "Nx2D":
                 viz_sample_Nx2D(

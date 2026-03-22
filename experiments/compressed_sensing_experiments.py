@@ -253,16 +253,21 @@ def make_compressed_sensing_datasets(datasets_cfg, dataset_type, folder):
                 X = generate_Nx2D_data(dataset_type, **X_params)
 
             if m < 1:
-                m = int(m * X.shape[0])
+                if mode == "2D":
+                    m_val = int(m * X.shape[1])
+                elif mode == "Nx2D":
+                    m_val = int(m * X.shape[1] * X.shape[2])
+                else:
+                    m_val = int(m * X.shape[-1])
             else:
-                m = int(m)
-            kwargs["m"] = m
+                m_val = int(m)
+            kwargs["m"] = m_val
             rng = np.random.default_rng(seed + 1)
             kwargs["rng"] = rng
             Y, A = func(X, **kwargs)
 
             # Save
-            filename = dataset_folder / f"{dataset_type}_{m}_{seed}.pkl"
+            filename = dataset_folder / f"{dataset_type}_{m_val}_{seed}.pkl"
             
             data = {"mode": mode, "type": "compressed_sensing", "X": X, "A": A}
             if mode == "Nx2D":

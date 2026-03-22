@@ -61,13 +61,13 @@ def compressed_sensing_corruption(X, m=2, rng=None):
         X = X.reshape(N, n*d)
         d = n*d
 
-    A_matrices = rng.standard_normal(size=(N, m, d))          # (N, m, d)
-    Y = np.einsum('nmd,nd->nm', A_matrices, X)                # (N, m)
+    A_matrices = rng.standard_normal(size=(N, m, d), dtype=np.float32)          # (N, m, d)
+    Y = np.einsum('nmd,nd->nm', A_matrices, X, dtype=np.float32)                # (N, m)
     
     return Y, A_matrices
  
 def normalize(X):
-    return (X - X.mean(axis=0)) / X.std(axis=0)
+    return ((X - X.mean(axis=0)) / X.std(axis=0)).astype(np.float32)
  
  
 # RNG dédié à la corruption (indépendant de la génération)
@@ -105,7 +105,7 @@ def inpainting_corruption_pointwise(X, p=0.2, rng=None):
         rng = np.random.default_rng()
     
     N = X.shape[0]
-    mask = (rng.uniform(0, 1, size=N) >= p).astype(int)  # 1=intact, 0=corrompu
+    mask = (rng.uniform(0, 1, size=N) >= p).astype(np.float32)  # 1=intact, 0=corrompu
     
     Y = X * mask[:, None]  # points corrompus mis à zéro
     A = np.stack([mask, mask], axis=1)  # a1=a2=mask

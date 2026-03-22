@@ -34,7 +34,7 @@ def generate_data(dataset, n_samples, noise, seed):
         raise ValueError(f"Unknown dataset: {dataset}")
 
     X = normalize(X)
-    return X
+    return X.astype(np.float32)
 
 
 def generate_Nx2D_data(dataset, n_clouds, n_points_per_cloud,
@@ -87,8 +87,8 @@ def main():
                         help="Corruption type")
     parser.add_argument("--p", type=float, default=0.2,
                         help="Corruption probability (inpainting and inapinting_pw)")
-    parser.add_argument("--m", type=int, default=2,
-                        help="Number of observed measurements (compressed sensing)")
+    parser.add_argument("--m", default=2,
+                        help="Number or fraction of observed measurements (compressed sensing)")
     parser.add_argument("--output", type=str, required=True,
                         help="Output .pkl file path")
     parser.add_argument("--seed", type=int, default=1234,
@@ -141,7 +141,7 @@ def main():
             Y, A = inpainting_corruption_pointwise(X, p=args.p, rng=rng)
         elif corruption == "compressed_sensing":
             if args.m < 1:
-                args.m = int(args.m * X.shape[0])
+                args.m = int(args.m * X.shape[1])
             else:
                 args.m = int(args.m)
             Y, A = compressed_sensing_corruption(X, m=args.m, rng=rng)
@@ -188,7 +188,7 @@ def main():
             Y, A = inpainting_corruption_pointwise_Nx2D(X, p=args.p, rng=rng)
         elif corruption == "compressed_sensing":
             if args.m < 1:
-                args.m = int(args.m * X.shape[0])
+                args.m = int(args.m * X.shape[1] * X.shape[2])
             else:
                 args.m = int(args.m)
             Y, A = compressed_sensing_corruption(X, m=args.m, rng=rng)

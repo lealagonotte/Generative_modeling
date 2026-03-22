@@ -137,6 +137,9 @@ def viz_sample_2D(
     # Generate static plot with 4 subplots
     static_steps = [0, int((total_steps - 1) * 0.33), int((total_steps - 1) * 0.66), total_steps - 1]
     fig_static, axes_static = plt.subplots(1, 4, figsize=(16, 4))
+    if addon:
+        fig_static.suptitle(addon.replace(" | ", ""), fontsize=16)
+
     for idx, step in enumerate(static_steps):
         ax_static = axes_static[idx]
         points = trajectory[step]
@@ -153,7 +156,7 @@ def viz_sample_2D(
         ax_static.set_xlim(xlim)
         ax_static.set_ylim(ylim)
         ax_static.set_aspect("equal")
-        ax_static.set_title(f"{addon}Step {step}/{total_steps - 1}  |  t = {t_val:.4f}", fontsize=12)
+        ax_static.set_title(f"Step {step}/{total_steps - 1}  |  t = {t_val:.4f}", fontsize=12)
         ax_static.set_xlabel("$x_1$")
         if idx == 0:
             ax_static.set_ylabel("$x_2$")
@@ -279,6 +282,8 @@ def viz_sample_Nx2D(
     static_steps = [0, int((total_steps - 1) * 0.33), int((total_steps - 1) * 0.66), total_steps - 1]
     for i in range(n_clouds):
         fig_static, axes_static = plt.subplots(1, 4, figsize=(16, 4))
+        if addon:
+            fig_static.suptitle(addon.replace(" | ", ""), fontsize=16)
         for idx, step in enumerate(static_steps):
             ax_static = axes_static[idx]
             points = trajectory[step, i]
@@ -292,7 +297,7 @@ def viz_sample_Nx2D(
             ax_static.set_xlim(xlim)
             ax_static.set_ylim(ylim)
             ax_static.set_aspect("equal")
-            ax_static.set_title(f"{addon}Step {step}/{total_steps - 1}  |  t = {t_val:.4f}", fontsize=12)
+            ax_static.set_title(f"Step {step}/{total_steps - 1}  |  t = {t_val:.4f}", fontsize=12)
             ax_static.set_xticks([])
             ax_static.set_yticks([])
 
@@ -356,7 +361,7 @@ def viz_loss_curves(loss_curves, output_folder):
             ax.set_xlabel("Epoch")
             ax.set_ylabel("Loss")
             if is_inpainting:
-                ax.set_title(f"{split.capitalize()} loss  ($p={val1:.3f}$, $\\delta={val2:.3f}$)")
+                ax.set_title(f"{split.capitalize()} loss  ($p={val1:.2f}$, $\\delta={val2:.2f}$)")
             else:
                 ax.set_title(f"{split.capitalize()} loss  ($m={val1}$, $m'={val2}$)")
             ax.legend()
@@ -380,7 +385,7 @@ def viz_loss_curves(loss_curves, output_folder):
                 continue
             color = cmap[color_idx % len(cmap)]
             if is_inpainting:
-                label = f"$p={val1:.3f}$, $\\delta={val2:.3f}$"
+                label = f"$p={val1:.2f}$, $\\delta={val2:.2f}$"
             else:
                 label = f"$m={val1}$, $m'={val2}$"
             for split_idx, split in enumerate(["train", "val"]):

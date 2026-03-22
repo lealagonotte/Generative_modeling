@@ -3,7 +3,7 @@ import numpy as np
 
 def normalize(X):
     """Zero-mean, unit-variance normalization per coordinate."""
-    return (X - X.mean(axis=0)) / X.std(axis=0)
+    return ((X - X.mean(axis=0)) / X.std(axis=0)).astype(np.float32)
 
 
 def inpainting_corruption(X, p=0.2, prevent_zero=True, rng=None):
@@ -82,8 +82,8 @@ def compressed_sensing_corruption(X, m=2, rng=None):
         X = X.reshape(N, n*d)
         d = n*d
 
-    A_matrices = rng.standard_normal(size=(N, m, d))          # (N, m, d)
-    Y = np.einsum('nmd,nd->nm', A_matrices, X)                # (N, m)
+    A_matrices = rng.standard_normal(size=(N, m, d), dtype=np.float32)          # (N, m, d)
+    Y = np.einsum('nmd,nd->nm', A_matrices, X, dtype=np.float32)                # (N, m)
     
     return Y, A_matrices
 
