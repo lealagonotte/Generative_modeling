@@ -128,6 +128,36 @@ def viz_sample_2D(
     plt.close(fig)
     print(f"Saved sampling GIF to {output_path}")
 
+    # Generate static plot with 4 subplots
+    static_steps = [0, int((total_steps - 1) * 0.33), int((total_steps - 1) * 0.66), total_steps - 1]
+    fig_static, axes_static = plt.subplots(1, 4, figsize=(16, 4))
+    for idx, step in enumerate(static_steps):
+        ax_static = axes_static[idx]
+        points = trajectory[step]
+        t_val = timesteps[min(step, len(timesteps) - 1)]
+
+        if ref_data is not None:
+            ax_static.scatter(ref_data[:, 0], ref_data[:, 1], s=1, alpha=0.15, c=ref_color, rasterized=True, label="Reference" if idx == 0 else "")
+            
+        ax_static.scatter(points[:, 0], points[:, 1], s=8, alpha=0.5, c=[sample_color], edgecolors="none", label="Sampled" if idx == 0 else "")
+        
+        if idx == 0:
+            ax_static.legend()
+        
+        ax_static.set_xlim(xlim)
+        ax_static.set_ylim(ylim)
+        ax_static.set_aspect("equal")
+        ax_static.set_title(f"Step {step}/{total_steps - 1}  |  t = {t_val:.4f}", fontsize=12)
+        ax_static.set_xlabel("$x_1$")
+        if idx == 0:
+            ax_static.set_ylabel("$x_2$")
+
+    fig_static.tight_layout()
+    static_path = str(output_path).replace(".gif", ".png")
+    fig_static.savefig(static_path, dpi=150)
+    plt.close(fig_static)
+    print(f"Saved static sampling plot to {static_path}")
+
 
 def viz_sample_Nx2D(
     module,
@@ -232,6 +262,33 @@ def viz_sample_Nx2D(
     anim.save(output_path, writer="pillow", fps=fps)
     plt.close(fig)
     print(f"Saved Nx2D sampling GIF to {output_path}")
+
+    # Generate static plots for each cloud
+    static_steps = [0, int((total_steps - 1) * 0.33), int((total_steps - 1) * 0.66), total_steps - 1]
+    for i in range(n_clouds):
+        fig_static, axes_static = plt.subplots(1, 4, figsize=(16, 4))
+        for idx, step in enumerate(static_steps):
+            ax_static = axes_static[idx]
+            points = trajectory[step, i]
+            t_val = timesteps[min(step, len(timesteps) - 1)]
+
+            if ref_data is not None and i < len(ref_data):
+                ax_static.scatter(ref_data[i, :, 0], ref_data[i, :, 1], s=1, alpha=0.15, c=ref_color, rasterized=True)
+                
+            ax_static.scatter(points[:, 0], points[:, 1], s=4, alpha=0.5, c=[sample_color], edgecolors="none")
+            
+            ax_static.set_xlim(xlim)
+            ax_static.set_ylim(ylim)
+            ax_static.set_aspect("equal")
+            ax_static.set_title(f"Step {step}/{total_steps - 1}  |  t = {t_val:.4f}", fontsize=12)
+            ax_static.set_xticks([])
+            ax_static.set_yticks([])
+
+        fig_static.tight_layout()
+        static_path = str(output_path).replace(".gif", f"_cloud_{i}.png")
+        fig_static.savefig(static_path, dpi=150)
+        plt.close(fig_static)
+    print(f"Saved {n_clouds} static sampling plots for Nx2D.")
 
 
 def _plot_mean_std(ax, epochs, mean, std, color, label):
