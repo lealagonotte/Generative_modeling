@@ -10,7 +10,9 @@ import torch.nn as nn
 BASE_DIR = str(Path(__file__).resolve().parent.parent)
 sys.path.append(BASE_DIR)
 
-from generate_dataset.utils import inpainting_corruption, inpainting_corruption_pointwise, compressed_sensing_corruption
+from generate_dataset.utils import (inpainting_corruption, inpainting_corruption_pointwise, 
+                                    compressed_sensing_corruption, inpainting_corruption_Nx2D, 
+                                    inpainting_corruption_pointwise_Nx2D)
 
 
 
@@ -137,19 +139,25 @@ class FurtherCorrupter(object):
 
         def init_operator_func(shape, device):
             X = np.zeros(shape)
-            _, A = inpainting_corruption(X, 
+            if len(shape) == 3:
+                _, A = inpainting_corruption_Nx2D(X, 
+                                         p=p, 
+                                         prevent_zero=prevent_zero, 
+                                         rng=rng)
+            else:
+                _, A = inpainting_corruption(X, 
                                          p=p, 
                                          prevent_zero=prevent_zero, 
                                          rng=rng)  
             return torch.from_numpy(A).to(device)
 
         def operator_func(A):
-            # A: (batch, D) binary mask
+            # A: binary mask
             B = (torch.rand_like(A) > p).float()
             return A * B
 
         def apply_operator_func(further_A, x):
-            # further_A: (batch, ...) binary mask, x: (batch, ...)
+            # further_A: binary mask, x: data
             return further_A * x
 
         return init_operator_func, operator_func, apply_operator_func
@@ -167,7 +175,13 @@ class FurtherCorrupter(object):
 
         def init_operator_func(shape, device):
             X = np.zeros(shape)
-            _, A = inpainting_corruption_pointwise(X, 
+
+            if len(shape) == 3:
+                _, A = inpainting_corruption_pointwise_Nx2D(X, 
+                                         p=p, 
+                                         rng=rng)
+            else:
+                _, A = inpainting_corruption_pointwise(X, 
                                          p=p, 
                                          rng=rng)  
             return torch.from_numpy(A).to(device)

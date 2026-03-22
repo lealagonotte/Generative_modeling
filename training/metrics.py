@@ -48,7 +48,14 @@ def wasserstein_distance(
         P = P.unsqueeze(1)
     if Q.dim() == 1:
         Q = Q.unsqueeze(1)
-
+    
+    if len(P.size()) == 3:
+        N, n, d = P.size()
+        P = P.view(N, n*d)
+    if len(Q.size()) == 3:
+        N, n, d = Q.size()
+        Q = Q.view(N, n*d)
+    
     if P.shape[1] != Q.shape[1]:
         raise ValueError(
             f"P et Q doivent avoir la même dimension d. "
@@ -122,6 +129,13 @@ def sliced_wasserstein_distance(
     if y.ndim == 1:
         y = y.unsqueeze(1)
 
+    if len(x.size()) == 3:
+        N, n, d = x.size()
+        x = x.view(N, n*d)
+    if len(y.size()) == 3:
+        N, n, d = y.size()
+        y = y.view(N, n*d)
+        
     if x.shape[1] != y.shape[1]:
         raise ValueError(
             f"x et y doivent avoir la même dimension d'espace, "
@@ -171,6 +185,15 @@ def chamfer_distance(
 
     if P1.shape[2] != P2.shape[2]:
         raise ValueError(f"P1 and P2 must have the same dimension d. Got {P1.shape[2]} and {P2.shape[2]}.")
+
+    if P1.shape[0] < P2.shape[0]:
+        mult = (P2.shape[0] // P1.shape[0]) + 1
+        P1 = P1.repeat(mult, 1, 1)[:P2.shape[0]]
+    elif P2.shape[0] < P1.shape[0]:
+        P1 = P1[:P2.shape[0]]
+    
+    device = P2.device
+    P1 = P1.detach().to(device)
 
     # (batch, N, M) pairwise squared distances
     diff = P1.unsqueeze(2) - P2.unsqueeze(1)
