@@ -223,8 +223,12 @@ class FurtherCorrupter(object):
         def operator_func(A):
             # A: (batch, m, d)
             batch, m, d = A.shape
-            B = torch.randn(batch, m_prime, m, device=A.device)
-            return torch.bmm(B, A)  # (batch, m_prime, d)
+            if m_prime == 0 or m_prime == 0.0: # naive = no further corruption
+                return A
+            
+            m_p = int(m_prime * m) if (m_prime > 0 and m_prime < 1) else int(m_prime)
+            B = torch.randn(batch, m_p, m, device=A.device)
+            return torch.bmm(B, A)  # (batch, m_p, d)
 
         def apply_operator_func(further_A, x):
             # further_A: (batch, m', d), x: (batch, d)
