@@ -105,9 +105,23 @@ class FlatDenoiserNx2D(nn.Module):
 
 class PointNetDenoiserNx2D(nn.Module):
     """
-    [PLACEHOLDER] Permutation-equivariant PointNet denoiser for the Nx2D setting.
-    This architecture should process each point independently and use a global
-    max-pooling operation to share information across the point cloud.
+    Permutation-equivariant PointNet denoiser for the Nx2D setting.
+    
+    PointNet Explanation:
+    Point clouds are unstructured, unordered sets of points. Standard network 
+    architectures (like CNNs or RNNs) expect ordered grids or sequences and 
+    cannot natively handle permutation invariance. PointNet solves this by:
+    1. Local Processing: Processing each point identically and independently 
+       through shared Multi-Layer Perceptrons (implemented as 1D Convolutions).
+    2. Global Aggregation: Applying a symmetric mathematical function (Max Pooling)
+       across all processed points to capture a single, global geometric feature 
+       signature representing the entire point cloud.
+    3. Per-Point Decoding: For dense tasks (like segmentation or denoising), the 
+       global feature is concatenated back with local point features. This gives 
+       each point both global context and local geometry to make its prediction.
+       
+    Implementation adapted from: https://github.com/yanx27/Pointnet_Pointnet2_pytorch
+    Specifically inspired by `models/pointnet_utils.py` and `models/pointnet_sem_seg.py`.
 
     Inputs:
         A   : (batch, N, data_dim) corruption mask
@@ -117,13 +131,71 @@ class PointNetDenoiserNx2D(nn.Module):
     Output:
         predicted x0 : (batch, N, data_dim)
     """
-    def __init__(self, data_dim=2, hidden_dim=128, time_embed_dim=32):
+    def __init__(self, data_dim=2, time_embed_dim=32):
         super().__init__()
         self.data_dim = data_dim
         self.time_embed = SinusoidalTimeEmbedding(time_embed_dim)
-        # TODO: Implement point-wise MLP, global pooling, and decoder MLP
-        raise NotImplementedError("PointNetDenoiserNx2D is a placeholder to be implemented later.")
+        
+        in_channels = 2 * data_dim + time_embed_dim
+        
+        # --- PointNet Encoder ---
+        # Using Conv1d with kernel_size=1 is equivalent to shared MLPs per point
+        self.conv1 = nn.Conv1d(in_channels, 64, 1)
+        self.conv2 = nn.Conv1d(64, 128, 1)
+        self.conv3 = nn.Conv1d(128, 1024, 1)
+        
+        self.bn1 = nn.BatchNorm1d(64)
+        self.bn2 = nn.BatchNorm1d(128)
+        self.bn3 = nn.BatchNorm1d(1024)
+        
+        # --- PointNet Decoder (Segmentation Head style because we want to reconstruct the original point cloud) ---
+        # Concatenates global feature (1024) + local feature from conv1 (64)
+        self.conv4 = nn.Conv1d(1024 + 64, 512, 1)
+        self.conv5 = nn.Conv1d(512, 256, 1)
+        self.conv6 = nn.Conv1d(256, 128, 1)
+        self.conv7 = nn.Conv1d(128, data_dim, 1)
+        
+        self.bn4 = nn.BatchNorm1d(512)
+        self.bn5 = nn.BatchNorm1d(256)
+        self.bn6 = nn.BatchNorm1d(128)
+        
+        self.relu = nn.ReLU()
 
     def forward(self, A, x_t, t):
-        # TODO: Implement forward pass
-        pass
+        batch_size, num_points, _ = x_t.shape
+        
+        # 1. Process time embedding
+        t_emb = self.time_embed(t)  # (batch, time_embed_dim)
+        
+        # Expand time embedding to attach to every point
+        t_emb_expanded = t_emb.unsqueeze(1).expand(batch_size, num_points, -1)
+        
+        # 2. Concatenate the per-point inputs: (batch, N, in_channels)
+        point_inputs = torch.cat([A, x_t, t_emb_expanded], dim=-1)
+        
+        # 3. Transpose for Conv1d: (batch, in_channels, N)
+        # PyTorch Conv1d expects shape (Batch, Channels, Length)
+        x = point_inputs.transpose(1, 2)
+        
+        # 4. PointNet Encoder
+        x1 = self.relu(self.bn1(self.conv1(x)))      # Local features: (batch, 64, N)
+        x2 = self.relu(self.bn2(self.conv2(x1)))     # (batch, 128, N)
+        x3 = self.relu(self.bn3(self.conv3(x2)))     # (batch, 1024, N)
+        
+        # 5. Global Max Pooling (Symmetric operation for permutation equivariance)
+        global_feat = torch.max(x3, 2, keepdim=True)[0]  # (batch, 1024, 1)
+        
+        # 6. Expand global features to match sequence length
+        global_feat_expanded = global_feat.expand(-1, -1, num_points)  # (batch, 1024, N)
+        
+        # 7. Concatenate local and global features
+        combined_features = torch.cat([x1, global_feat_expanded], dim=1) # (batch, 1088, N)
+        
+        # 8. PointNet Decoder
+        x4 = self.relu(self.bn4(self.conv4(combined_features)))
+        x5 = self.relu(self.bn5(self.conv5(x4)))
+        x6 = self.relu(self.bn6(self.conv6(x5)))
+        out = self.conv7(x6)  # (batch, data_dim, N)
+        
+        # 9. Transpose back to match original shape: (batch, N, data_dim)
+        return out.transpose(1, 2)
