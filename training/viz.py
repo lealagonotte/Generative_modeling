@@ -255,8 +255,7 @@ def _compute_mean_std(entries, key):
 
 
 def viz_loss_curves(loss_curves, output_folder):
-    output_folder = Path(output_folder)
-    viz_dir = output_folder / "viz"
+    viz_dir = Path(output_folder)
     os.makedirs(str(viz_dir), exist_ok=True)
 
     grouped = _group_loss_curves(loss_curves)

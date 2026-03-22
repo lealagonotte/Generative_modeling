@@ -165,8 +165,9 @@ def make_table(results, metric_list, folder):
     aggregated_df.to_csv(str(filename))
     LOGGER.info(f"Table saved at {str(filename)}")
 
-def plot_loss_curves(loss_curves, folder):
-    viz_loss_curves(loss_curves, folder)
+def plot_loss_curves(loss_curves, dataset_type, folder):
+    viz_dir = folder / f"viz_{dataset_type}"
+    viz_loss_curves(loss_curves, viz_dir)
 
 def visualize_best_worse(dataset_type, best, worst, folder, n_samples, n_steps):
     for i, dico in enumerate([best, worst]):
@@ -357,7 +358,7 @@ def main():
         make_table(results_metrics_list, metric_list, OUTPUT_FOLDER)
 
         LOGGER.info("Making visualizations..")
-        plot_loss_curves(loss_curves, OUTPUT_FOLDER)
+        plot_loss_curves(loss_curves, dataset_type, OUTPUT_FOLDER)
 
         visualize_best_worse(dataset_type, best_overall, worst_overall, OUTPUT_FOLDER, 
                             **viz_cfg)
