@@ -38,10 +38,11 @@ def generate_data(dataset, n_samples, noise, seed):
 
 
 def generate_Nx2D_data(dataset, n_clouds, n_points_per_cloud,
-                        noise_min, noise_max,
-                        augment_rotation, augment_translation, shift_std,
-                        augment_scale, scale_min, scale_max,
-                        seed):
+                        noise_min=0.01, noise_max=0.9,
+                       augment_rotation=True,
+                       augment_translation=True, shift_std=0.5,
+                       augment_scale=True, scale_min=0.5, scale_max=2.0,
+                       seed=1234):
     """Generate N×2D point cloud dataset with geometric augmentations."""
     rng = np.random.default_rng(seed)
     noise_levels = rng.uniform(noise_min, noise_max, size=n_clouds)
@@ -85,10 +86,12 @@ def main():
                         choices=["inpainting", "inpainting_pw", "gaussian"],
                         help="Corruption type")
     parser.add_argument("--p", type=float, default=0.2,
-                        help="Corruption probability")
+                        help="Corruption probability (inpainting and inapinting_pw)")
+    parser.add_argument("--m", type=int, default=2,
+                        help="Number of observed measurements (compressed sensing)")
     parser.add_argument("--output", type=str, required=True,
                         help="Output .pkl file path")
-    parser.add_argument("--seed", type=int, default=42,
+    parser.add_argument("--seed", type=int, default=1234,
                         help="Random seed")
     parser.add_argument("--prevent_zero", action="store_true",
                         help="Prevent all-zero masks (inpainting only)")
@@ -98,8 +101,6 @@ def main():
                         help="[2D] Number of points to generate")
     parser.add_argument("--noise", type=float, default=None,
                         help="[2D] Dataset noise level (default: 0.1 for two_moons, 0.5 for swiss_roll)")
-    parser.add_argument("--m", type=float, default=2,
-                        help="[2D] Number of observed measurements (gaussian corruption)")
 
     # Nx2D-specific args
     parser.add_argument("--n_clouds", type=int, default=1000,
@@ -148,7 +149,13 @@ def main():
 
         N, D = A.shape
         visible_rate = A.mean()
-        print(f"[2D] Dataset: {args.dataset} | Corruption: {args.corruption} (p={args.p})")
+
+        if corruption in ["inpainting", "inpainting_pw"]:
+            addon = f"(p={args.p})"
+        else:
+            addon = f"(m={args.m})"
+
+        print(f"[2D] Dataset: {args.dataset} | Corruption: {args.corruption} {addon}")
         print(f"Samples: {N} | Dimensions: {D} | Visible rate: {100*visible_rate:.1f}%")
         print(f"Saved to {args.output}")
 
@@ -176,7 +183,7 @@ def main():
         elif corruption == "inpainting_pw":
             Y, A = inpainting_corruption_pointwise_Nx2D(X, p=args.p, rng=rng)
         elif corruption == "gaussian":
-            raise NotImplementedError("Compressed sensing corruption not yet supported for Nx2D mode.")
+            Y, A = compressed_sensing_corruption(X, m=int(args.m), rng=rng)
 
         os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
         data = {"mode": "Nx2D", "type": corruption, "X": X, "A": A,
@@ -186,7 +193,13 @@ def main():
 
         n_clouds, N, D = X.shape
         visible_rate = A.mean()
-        print(f"[Nx2D] Dataset: {args.dataset} | Corruption: {args.corruption} (p={args.p})")
+
+        if corruption in ["inpainting", "inpainting_pw"]:
+            addon = f"(p={args.p})"
+        else:
+            addon = f"(m={args.m})"
+
+        print(f"[Nx2D] Dataset: {args.dataset} | Corruption: {args.corruption} {addon}")
         print(f"Clouds: {n_clouds} | Points/cloud: {N} | Dim: {D} | Visible rate: {100*visible_rate:.1f}%")
         print(f"Saved to {args.output}")
 

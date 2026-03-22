@@ -53,8 +53,14 @@ def compressed_sensing_corruption(X, m=2, rng=None):
     if rng is None:
         rng = np.random.default_rng()
     
-    N, d = X.shape
-    
+    if len(X.shape) == 2:
+        N, d = X.shape
+    else:
+        # Nx2D case
+        N, n, d = X.shape
+        X = X.reshape(N, n*d)
+        d = n*d
+
     A_matrices = rng.standard_normal(size=(N, m, d))          # (N, m, d)
     Y = np.einsum('nmd,nd->nm', A_matrices, X)                # (N, m)
     
@@ -69,7 +75,7 @@ rng_corrupt = np.random.default_rng(123)
  
  
 #################################### Two moons ##############################################
-X, _ = make_moons(n_samples=100000, noise=0.1, random_state=42)
+X, _ = make_moons(n_samples=100000, noise=0.1, random_state=1234)
 X = normalize(X)
 
 p=0.2
@@ -83,7 +89,7 @@ with open(f"two_moons_{p}.pkl", "wb") as f:
  
  
 ####################################### Swiss roll 2D ################################################
-x_roll, _ = make_swiss_roll(n_samples=100000, noise=0.5, random_state=42)
+x_roll, _ = make_swiss_roll(n_samples=100000, noise=0.5, random_state=1234)
 x_roll = normalize(x_roll[:, [0, 2]])
 
 p=0.2
@@ -113,7 +119,7 @@ def generate_Nx2D_data(dataset, n_clouds, n_points_per_cloud,
                        augment_rotation=True,
                        augment_translation=True, shift_std=0.5,
                        augment_scale=True, scale_min=0.5, scale_max=2.0,
-                       seed=42):
+                       seed=1234):
     """
     Generate a dataset of point clouds for the N×2D setting.
 

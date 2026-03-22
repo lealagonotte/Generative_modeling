@@ -18,7 +18,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
 from generate_dataset.generation_dataset_script import generate_data, generate_Nx2D_data
-from generate_dataset.utils import inpainting_corruption, inpainting_corruption_pointwise, inpainting_corruption_Nx2D, inpainting_corruption_pointwise_Nx2D
+from generate_dataset.utils import compressed_sensing_corruption, compressed_sensing_corruption_Nx2D
 from training.viz import viz_sample_2D, viz_sample_Nx2D, viz_loss_curves
 from training.ambient_diffusion import NoiseScheduler, FurtherCorrupter, Sampler, AmbientLoss
 from training.module import Denoiser, FlatDenoiserNx2D, PointNetDenoiserNx2D
@@ -70,7 +70,7 @@ def compute_metrics(dataset_path, metric_list, sampler, n_samples, n_steps,
 
     return metric_results
     
-def launch_experiments(dataset_path, p, delta_list, 
+def launch_experiments(dataset_path, m, m_prime_list,
                        metric_list, ranking_metric, 
                        batch_size, 
                        schedule, schedule_kwargs,
@@ -94,9 +94,9 @@ def launch_experiments(dataset_path, p, delta_list,
 
     for method in ["ambient", "naive"]:
         LOGGER.info(f"Running {method} method".upper())
-        for delta in delta_list:
-            LOGGER.info(f"Using {delta} further corruption..")
-            further_corrupter = FurtherCorrupter(dataset_type, p=delta)
+        for m_prime in m_prime_list:
+            LOGGER.info(f"Using {m_prime} further corruption..")
+            further_corrupter = FurtherCorrupter(dataset_type, m_prime=m_prime)
         
             training_kwargs = module_kwargs.copy()
             model_type = training_kwargs.pop("model", "mlp")
@@ -128,23 +128,23 @@ def launch_experiments(dataset_path, p, delta_list,
 
             if metric_dict[ranking_metric] < best_so_far["metrics"][ranking_metric]:
                 best_so_far = {"dataset_path": dataset_path, 
-                               "method":method, "p":p, "delta": delta, 
+                               "method":method, "m":m, "m_prime": m_prime, 
                                "module":module, "metrics":metric_dict, "device":device,
                                "corrupter":further_corrupter, "scheduler": noise_scheduler}
                 
                 
             if metric_dict[ranking_metric] > worst_so_far["metrics"][ranking_metric]:
                 worst_so_far = {"dataset_path": dataset_path, 
-                               "method":method, "p":p, "delta": delta, 
+                               "method":method, "m":m, "m_prime": m_prime, 
                                "module":module, "metrics":metric_dict, "device":device,
                                "corrupter":further_corrupter, "scheduler": noise_scheduler}
 
-            row_dict = {"method":method, "p": p, "delta": delta}
+            row_dict = {"method":method, "m": m, "m_prime": m_prime}
             for metric, metric_value in metric_dict.items():
                 row_dict[metric] = metric_value
             results.append(row_dict)
 
-            loss_curves.append({"method":method, "p": p, "delta": delta, 
+            loss_curves.append({"method":method, "m": m, "m_prime": m_prime, 
                                 "train":train_losses, "val":val_losses})
             
     return results, best_so_far, worst_so_far, loss_curves
@@ -159,7 +159,7 @@ def make_table(results, metric_list, folder):
         agg_dict[f"Avg {metric}"] = (metric, 'mean')
         agg_dict[f"Std {metric}"] = (metric, 'std')
 
-    aggregated_df = df.groupby(["method", "p", "delta"]).agg(**agg_dict)
+    aggregated_df = df.groupby(["method", "m", "m_prime"]).agg(**agg_dict)
     
     aggregated_df.to_csv(str(filename))
     LOGGER.info(f"Table saved at {str(filename)}")
@@ -182,18 +182,18 @@ def visualize_best_worse(dataset_type, best, worst, folder, n_samples, n_steps):
         mode = ref_data.get("mode", "2D")
         
         method = dico["method"]
-        p = dico["p"]
-        delta = dico["delta"]
+        m = dico["m"]
+        m_prime = dico["m_prime"]
         module = dico["module"]
         further_corrupter = dico["corrupter"]
         noise_scheduler = dico["scheduler"]
 
         os.makedirs(str(folder / f"viz_{dataset_type}"), exist_ok=True)
-        filename = folder / f"viz_{dataset_type}" / f"{prefix}_sampling_{method}_{p:.4f}_{delta:.4f}.gif"
+        filename = folder / f"viz_{dataset_type}" / f"{prefix}_sampling_{method}_{m:.4f}_{m_prime:.4f}.gif"
 
         # Generate sampling GIF with reference overlay
         LOGGER.info(f"Generating {prefix} sampling GIF...")
-        if corruption_type in ["inpainting", "inpainting_pw"]:
+        if corruption_type == "gaussian":
             if mode == "Nx2D":
                 viz_sample_Nx2D(
                     module, noise_scheduler, further_corrupter,
@@ -223,8 +223,7 @@ def load_config(path: str | Path):
 def make_seeds(n):
     return np.random.randint(0,1000001, n)
 
-def make_inpainting_datasets(datasets_cfg, dataset_type, folder):
-    inpainting_type = datasets_cfg["type"]
+def make_compressed_sensing_datasets(datasets_cfg, dataset_type, folder):
     prevent_zero = datasets_cfg.get("prevent_zero", True)
     p_list = datasets_cfg["p"]
     mode = datasets_cfg.get("mode", "2D")
@@ -308,7 +307,7 @@ def main():
     datasets_cfg = cfg_dict["datasets"]
     inpainting_type = datasets_cfg["type"]
     mode = datasets_cfg.get("mode", "2D")
-    delta_list = datasets_cfg["delta"]
+    m_prime_list = datasets_cfg["m_prime"]
 
     # Making output_folder
     folder = cfg_dict["output_folder"]
@@ -349,7 +348,7 @@ def main():
             LOGGER.info("="*80)
             
             LOGGER.info("Launching experiments..")
-            results_metrics, best, worst, loss_curves = launch_experiments(dataset_path, p, delta_list, 
+            results_metrics, best, worst, loss_curves = launch_experiments(dataset_path, m, m_prime_list, 
                                                                            metric_list, ranking_metric, 
                                                                            **training_cfg)
 
