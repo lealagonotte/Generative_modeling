@@ -145,7 +145,7 @@ def train(train_dataloader: DataLoader, val_dataloader: DataLoader,
 
     return module, epoch_train_losses, epoch_val_losses
 
-def sample(shape, n_steps, device, module, further_corrupter, noise_scheduler):
+def sample(shape, n_steps, device, module, further_corrupter, noise_scheduler, apply_operator=None):
     # Use Fixed Mask Sampling as the authors
     sampler = Sampler("fms")
 
@@ -154,7 +154,8 @@ def sample(shape, n_steps, device, module, further_corrupter, noise_scheduler):
     A_sample = further_corrupter.get_operator(A) # sample A_further
 
     start = time.time()
-    samples = sampler.sample(shape, n_steps, A_sample, module, noise_scheduler)
+    samples = sampler.sample(shape, n_steps, A_sample, module, noise_scheduler,
+                             apply_operator=apply_operator)
     elapsed = time.time() - start
     return samples, elapsed
 
@@ -206,7 +207,9 @@ def main():
     elif dataset_type == "inpainting_pw":
         further_corrupter = FurtherCorrupter(dataset_type, p=args.further_p)
     elif dataset_type == "compressed_sensing":
-        further_corrupter = FurtherCorrupter(dataset_type) # we always use m_prime=1
+        sample_A = next(iter(train_loader))[1]
+        m_actual = sample_A.shape[1]  # A is (batch, m, d)
+        further_corrupter = FurtherCorrupter(dataset_type, m=m_actual) # we always use m_prime=1
     else:
         raise ValueError(f"Unknown dataset corruption type {dataset_type}. Must be eitehr 'inpainting' or 'compressed_sensing'.")
     

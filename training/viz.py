@@ -65,7 +65,8 @@ def viz_sample_2D(
     # Run sampling with trajectory
     module.eval()
     trajectory, timesteps = sampler.sample_with_trajectory(
-        shape, n_steps, A_sample, module, noise_scheduler
+        shape, n_steps, A_sample, module, noise_scheduler,
+        apply_operator=further_corrupter.apply_operator_func
     )
     # trajectory: (n_steps, n_samples, 2), timesteps: (n_steps,)
     trajectory = trajectory.numpy()
@@ -212,7 +213,8 @@ def viz_sample_Nx2D(
 
     module.eval()
     trajectory, timesteps = sampler.sample_with_trajectory(
-        shape, n_steps, A_sample, module, noise_scheduler
+        shape, n_steps, A_sample, module, noise_scheduler,
+        apply_operator=further_corrupter.apply_operator_func
     )
     # trajectory: (n_steps, n_clouds, N, 2)
     trajectory = trajectory.numpy()

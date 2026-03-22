@@ -57,7 +57,8 @@ def compute_metrics(dataset_path, metric_list, sampler, n_samples, n_steps,
     module.eval()
     LOGGER.info("Sampling..")
     samples = sampler.sample(
-        shape, n_steps, A_sample, module, noise_scheduler
+        shape, n_steps, A_sample, module, noise_scheduler,
+        apply_operator=further_corrupter.apply_operator_func
     )
 
     with open(dataset_path, "rb") as f:
@@ -83,9 +84,16 @@ def launch_experiments(dataset_path, m, m_prime_list,
     # Load data
     train_loader, val_loader, dataset_type = load_dataset(dataset_path, batch_size)
 
+    # Extract m from dataset's A matrix for compressed sensing
+    if dataset_type == "compressed_sensing":
+        sample_A = next(iter(train_loader))[1]
+        m_actual = sample_A.shape[1]  # A is (batch, m, d)
+    else:
+        m_actual = None
+
     # Setup components
     noise_scheduler = NoiseScheduler(schedule, **schedule_kwargs)
-    
+
     sampler = Sampler(sampler)
 
     results = []
@@ -95,11 +103,14 @@ def launch_experiments(dataset_path, m, m_prime_list,
 
     for method in ["ambient", "naive"]:
         LOGGER.info(f"Running {method} method".upper())
-        
+
         current_m_prime_list = [0.0] if method == "naive" else m_prime_list
         for m_prime in current_m_prime_list:
             LOGGER.info(f"Using {m_prime} further corruption..")
-            further_corrupter = FurtherCorrupter(dataset_type, m_prime=m_prime)
+            if dataset_type == "compressed_sensing":
+                further_corrupter = FurtherCorrupter(dataset_type, m_prime=m_prime, m=m_actual)
+            else:
+                further_corrupter = FurtherCorrupter(dataset_type, m_prime=m_prime)
         
             training_kwargs = module_kwargs.copy()
             model_type = training_kwargs.pop("model", "mlp")

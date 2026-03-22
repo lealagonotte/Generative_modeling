@@ -267,7 +267,7 @@ class Sampler(object):
             """
             return torch.linspace(1.0, 1e-4, n_steps)
 
-        def sampling_step(x_t, A, t_curr, t_next, module, noise_scheduler, eps=1e-8):
+        def sampling_step(x_t, A, t_curr, t_next, module, noise_scheduler, eps=1e-8, apply_operator=None):
             """
             Reverse SDE step following Eq. 3.3.
 
@@ -284,7 +284,9 @@ class Sampler(object):
                 sigma_next = sigma_next.unsqueeze(0)
 
             with torch.no_grad():
-                pred_x0 = module(A, x_t, t_curr)
+                # For compressed sensing, project x_t to measurement space before module
+                x_t_input = apply_operator(A, x_t) if apply_operator is not None else x_t
+                pred_x0 = module(A, x_t_input, t_curr)
 
             # Dynamic reshaping for broadcasting to x_t shape
             shape = [sigma_t.size(0)] + [1] * (x_t.dim() - 1)
@@ -302,7 +304,7 @@ class Sampler(object):
     def step(self, *args):
         return self.sampling_step(*args)
 
-    def sample(self, shape, n_steps, A, module, noise_scheduler):
+    def sample(self, shape, n_steps, A, module, noise_scheduler, apply_operator=None):
         """
         Generate samples by running the reverse SDE.
 
@@ -312,6 +314,7 @@ class Sampler(object):
             A: corruption operator for sampling (e.g. identity mask = all ones)
             module: trained denoiser
             noise_scheduler: NoiseScheduler instance
+            apply_operator: optional callable (A, x) -> projected x (needed for compressed sensing)
         """
         device = next(module.parameters()).device
         timesteps = self.define_steps(n_steps).to(device)
@@ -321,11 +324,12 @@ class Sampler(object):
         for i in range(len(timesteps) - 1):
             t_curr = timesteps[i].expand(shape[0])
             t_next = timesteps[i + 1].expand(shape[0])
-            x_t = self.sampling_step(x_t, A, t_curr, t_next, module, noise_scheduler)
+            x_t = self.sampling_step(x_t, A, t_curr, t_next, module, noise_scheduler,
+                                     apply_operator=apply_operator)
 
         return x_t
 
-    def sample_with_trajectory(self, shape, n_steps, A, module, noise_scheduler):
+    def sample_with_trajectory(self, shape, n_steps, A, module, noise_scheduler, apply_operator=None):
         """
         Same as sample(), but returns the full trajectory of x_t at each step.
 
@@ -341,7 +345,8 @@ class Sampler(object):
         for i in range(len(timesteps) - 1):
             t_curr = timesteps[i].expand(shape[0])
             t_next = timesteps[i + 1].expand(shape[0])
-            x_t = self.sampling_step(x_t, A, t_curr, t_next, module, noise_scheduler)
+            x_t = self.sampling_step(x_t, A, t_curr, t_next, module, noise_scheduler,
+                                     apply_operator=apply_operator)
             trajectory.append(x_t.detach().cpu())
 
         return torch.stack(trajectory, dim=0), timesteps.cpu()
