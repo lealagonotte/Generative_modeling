@@ -68,25 +68,23 @@ def inpainting_corruption_pointwise(X, p=0.2, rng=None):
 
 def compressed_sensing_corruption(X, m=2, rng=None):
     """
-    Compressed sensing corruption.
-
-    A in R^(m x d) with iid N(0, I_d) rows. y = A @ x.
-
-    Args:
-        X   : clean data, shape (N, d)
-        m   : number of measurements
-        rng : numpy Generator
-
-    Returns:
-        Y          : measurements, shape (N, m)
-        A_matrices : measurement matrices, shape (N, m, d)
+    Corruption Compressed Sensing (Ambient Diffusion, Corollary A.2).
+    A ∈ R^(m x d) : m lignes iid N(0, I_d) → y = A·x ∈ R^m
     """
     if rng is None:
         rng = np.random.default_rng()
+    
+    if len(X.shape) == 2:
+        N, d = X.shape
+    else:
+        # Nx2D case
+        N, n, d = X.shape
+        X = X.reshape(N, n*d)
+        d = n*d
 
-    N, d = X.shape
-    A_matrices = rng.standard_normal(size=(N, m, d))
-    Y = np.einsum('nmd,nd->nm', A_matrices, X)
+    A_matrices = rng.standard_normal(size=(N, m, d))          # (N, m, d)
+    Y = np.einsum('nmd,nd->nm', A_matrices, X)                # (N, m)
+    
     return Y, A_matrices
 
 

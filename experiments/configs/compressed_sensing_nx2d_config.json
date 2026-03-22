@@ -1,6 +1,6 @@
 {
     "output_folder": "./results",
-    "n_replicates": 1,
+    "n_replicates": 3,
     "metrics": ["wd", "swd", "cd"],
     "datasets":{
         "type": "compressed_sensing",
@@ -9,8 +9,8 @@
         "m_prime": [1],
         "X_params":{
             "two_moons":{
-                "n_clouds": 150,
-                "n_points_per_cloud": 500,
+                "n_clouds": 1000,
+                "n_points_per_cloud": 300,
                 "noise_min": 0.01,
                 "noise_max": 0.35,
                 "augment_rotation": 1,
@@ -18,8 +18,8 @@
                 "augment_scale": 1
             },
             "swiss_roll":{
-                "n_clouds": 150,
-                "n_points_per_cloud": 500,
+                "n_clouds": 1000,
+                "n_points_per_cloud": 300,
                 "noise_min": 0.1,
                 "noise_max": 0.9,
                 "augment_rotation": 1,
@@ -29,7 +29,7 @@
         }
     },
     "training":{
-        "batch_size": 16,
+        "batch_size": 32,
         "schedule": "ve",
         "schedule_kwargs": {
             "sigma_min": 0.01,
@@ -37,22 +37,21 @@
         },
         "module_kwargs":{
             "model": "flat_nx2d",
-            "n_points_per_cloud": 200,
             "data_dim": 2,
             "n_layers": 3,
             "hidden_dim": 256
         },
-        "epochs": 100,
-        "patience": 15,
+        "epochs": 1000,
+        "patience": 50,
         "adam_kwargs": {
             "lr": 1e-3
         },
         "sampler": "fms",
         "n_samples": 9,
-        "n_steps": 100
+        "n_steps": 1000
     },
     "viz":{
         "n_samples": 9,
-        "n_steps": 100
+        "n_steps": 1000
     }
 }
