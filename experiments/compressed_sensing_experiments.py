@@ -363,7 +363,7 @@ def main():
             LOGGER.info("="*80)
             
             LOGGER.info("Launching experiments..")
-            results_metrics, best, worst, loss_curves = launch_experiments(dataset_path, m, m_prime_list, 
+            results_metrics, best, worst, loss_curves = launch_experiments(dataset_path, p, m_prime_list,
                                                                            metric_list, ranking_metric, 
                                                                            **training_cfg)
 
