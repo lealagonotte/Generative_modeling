@@ -205,10 +205,10 @@ def main():
         further_corrupter = FurtherCorrupter(dataset_type, p=args.further_p)
     elif dataset_type == "inpainting_pw":
         further_corrupter = FurtherCorrupter(dataset_type, p=args.further_p)
-    elif dataset_type == "gaussian":
+    elif dataset_type == "compressed_sensing":
         further_corrupter = FurtherCorrupter(dataset_type) # we always use m_prime=1
     else:
-        raise ValueError(f"Unknown dataset corruption type {dataset_type}. Must be eitehr 'inpainting' or 'gaussian'.")
+        raise ValueError(f"Unknown dataset corruption type {dataset_type}. Must be eitehr 'inpainting' or 'compressed_sensing'.")
     
     if args.model == "mlp":
         module = Denoiser(data_dim=args.data_dim).to(device)

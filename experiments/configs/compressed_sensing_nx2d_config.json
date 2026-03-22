@@ -1,29 +1,30 @@
 {
-    "output_folder": "results/nx2d_results_test",
+    "output_folder": "./results",
     "n_replicates": 1,
     "metrics": ["wd", "swd", "cd"],
     "datasets":{
-        "type": "inpainting",
-        "prevent_zero": true,
+        "type": "compressed_sensing",
         "mode": "Nx2D",
-        "p": [0.0, 0.2, 0.4, 0.6, 0.8],
-        "delta": [0.0, 0.1, 0.3],
+        "m": [0.1, 0.33, 0.5, 0.66, 0.8],
+        "m_prime": [1],
         "X_params":{
             "two_moons":{
                 "n_clouds": 150,
                 "n_points_per_cloud": 500,
-                "noise": 0.05,
-                "apply_rotation": true,
-                "apply_translation": true,
-                "apply_scale": true
+                "noise_min": 0.01,
+                "noise_max": 0.35,
+                "augment_rotation": 1,
+                "augment_translation": 1,
+                "augment_scale": 1
             },
             "swiss_roll":{
                 "n_clouds": 150,
                 "n_points_per_cloud": 500,
-                "noise": 0.5,
-                "apply_rotation": true,
-                "apply_translation": true,
-                "apply_scale": true
+                "noise_min": 0.1,
+                "noise_max": 0.9,
+                "augment_rotation": 1,
+                "augment_translation": 1,
+                "augment_scale": 1
             }
         }
     },

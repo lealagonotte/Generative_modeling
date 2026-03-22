@@ -83,7 +83,7 @@ def main():
                         choices=["2D", "Nx2D"],
                         help="2D (one point = one sample) or Nx2D (one cloud = one sample)")
     parser.add_argument("--corruption", type=str, default="inpainting",
-                        choices=["inpainting", "inpainting_pw", "gaussian"],
+                        choices=["inpainting", "inpainting_pw", "compressed_sensing"],
                         help="Corruption type")
     parser.add_argument("--p", type=float, default=0.2,
                         help="Corruption probability (inpainting and inapinting_pw)")
@@ -139,8 +139,12 @@ def main():
             Y, A = inpainting_corruption(X, p=args.p, prevent_zero=args.prevent_zero, rng=rng)
         elif corruption == "inpainting_pw":
             Y, A = inpainting_corruption_pointwise(X, p=args.p, rng=rng)
-        elif corruption == "gaussian":
-            Y, A = compressed_sensing_corruption(X, m=int(args.m), rng=rng)
+        elif corruption == "compressed_sensing":
+            if args.m < 1:
+                args.m = int(args.m * X.shape[0])
+            else:
+                args.m = int(args.m)
+            Y, A = compressed_sensing_corruption(X, m=args.m, rng=rng)
 
         os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
         data = {"mode": "2D", "type": corruption, "X": X, "A": A}
@@ -182,8 +186,12 @@ def main():
             Y, A = inpainting_corruption_Nx2D(X, p=args.p, prevent_zero=args.prevent_zero, rng=rng)
         elif corruption == "inpainting_pw":
             Y, A = inpainting_corruption_pointwise_Nx2D(X, p=args.p, rng=rng)
-        elif corruption == "gaussian":
-            Y, A = compressed_sensing_corruption(X, m=int(args.m), rng=rng)
+        elif corruption == "compressed_sensing":
+            if args.m < 1:
+                args.m = int(args.m * X.shape[0])
+            else:
+                args.m = int(args.m)
+            Y, A = compressed_sensing_corruption(X, m=args.m, rng=rng)
 
         os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
         data = {"mode": "Nx2D", "type": corruption, "X": X, "A": A,

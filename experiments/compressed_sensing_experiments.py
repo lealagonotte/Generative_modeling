@@ -18,7 +18,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
 from generate_dataset.generation_dataset_script import generate_data, generate_Nx2D_data
-from generate_dataset.utils import compressed_sensing_corruption, compressed_sensing_corruption_Nx2D
+from generate_dataset.utils import compressed_sensing_corruption
 from training.viz import viz_sample_2D, viz_sample_Nx2D, viz_loss_curves
 from training.ambient_diffusion import NoiseScheduler, FurtherCorrupter, Sampler, AmbientLoss
 from training.module import Denoiser, FlatDenoiserNx2D, PointNetDenoiserNx2D
@@ -193,7 +193,7 @@ def visualize_best_worse(dataset_type, best, worst, folder, n_samples, n_steps):
 
         # Generate sampling GIF with reference overlay
         LOGGER.info(f"Generating {prefix} sampling GIF...")
-        if corruption_type == "gaussian":
+        if corruption_type == "compressed_sensing":
             if mode == "Nx2D":
                 viz_sample_Nx2D(
                     module, noise_scheduler, further_corrupter,
@@ -224,8 +224,7 @@ def make_seeds(n):
     return np.random.randint(0,1000001, n)
 
 def make_compressed_sensing_datasets(datasets_cfg, dataset_type, folder):
-    prevent_zero = datasets_cfg.get("prevent_zero", True)
-    p_list = datasets_cfg["p"]
+    m_list = datasets_cfg["m"]
     mode = datasets_cfg.get("mode", "2D")
     X_params = datasets_cfg["X_params"][dataset_type]
 
@@ -234,22 +233,10 @@ def make_compressed_sensing_datasets(datasets_cfg, dataset_type, folder):
     
     traces = []
     
-    if mode == "2D":
-        if inpainting_type == "inpainting":
-            func = inpainting_corruption
-            kwargs = {"prevent_zero": prevent_zero}
-        elif inpainting_type == "inpainting_pw":
-            func = inpainting_corruption_pointwise
-            kwargs = {}
-    elif mode == "Nx2D":
-        if inpainting_type == "inpainting":
-            func = inpainting_corruption_Nx2D
-            kwargs = {"prevent_zero": prevent_zero}
-        elif inpainting_type == "inpainting_pw":
-            func = inpainting_corruption_pointwise_Nx2D
-            kwargs = {}
+    func = compressed_sensing_corruption
+    kwargs = {}
 
-    for p in p_list:
+    for m in m_list:
         for seed in SEEDS:
             X_params["seed"] = seed
             
@@ -258,22 +245,26 @@ def make_compressed_sensing_datasets(datasets_cfg, dataset_type, folder):
             else:
                 X = generate_Nx2D_data(dataset_type, **X_params)
 
-            kwargs["p"] = p
+            if m < 1:
+                m = int(m * X.shape[0])
+            else:
+                m = int(m)
+            kwargs["m"] = m
             rng = np.random.default_rng(seed + 1)
             kwargs["rng"] = rng
             Y, A = func(X, **kwargs)
 
             # Save
-            filename = dataset_folder / f"{dataset_type}_{p}_{seed}.pkl"
+            filename = dataset_folder / f"{dataset_type}_{m}_{seed}.pkl"
             
-            data = {"mode": mode, "type": inpainting_type, "X": X, "A": A}
+            data = {"mode": mode, "type": "compressed_sensing", "X": X, "A": A}
             if mode == "Nx2D":
                 data["n_points_per_cloud"] = X_params.get("n_points_per_cloud", 200)
 
             with open(str(filename), "wb") as f:
                 pkl.dump(data, f)
             
-            traces.append((str(filename), p))
+            traces.append((str(filename), m))
     return traces
 
 def main():
@@ -305,13 +296,12 @@ def main():
     ranking_metric = metric_list[0]
 
     datasets_cfg = cfg_dict["datasets"]
-    inpainting_type = datasets_cfg["type"]
     mode = datasets_cfg.get("mode", "2D")
     m_prime_list = datasets_cfg["m_prime"]
 
     # Making output_folder
     folder = cfg_dict["output_folder"]
-    folder = "/".join(folder.split("/")[:-1]) + f"/{inpainting_type}_{mode}_results"
+    folder = "/".join(folder.split("/")[:-1]) + f"/{dataset_type}_{mode}_results"
     OUTPUT_FOLDER = Path(folder).resolve()
     os.makedirs(str(OUTPUT_FOLDER), exist_ok=True)
 
@@ -336,7 +326,7 @@ def main():
     for dataset_type in ["two_moons", "swiss_roll"]:
 
         LOGGER.info(f"Making {dataset_type.upper()} datasets..")
-        datasets = make_inpainting_datasets(datasets_cfg, dataset_type, OUTPUT_FOLDER)
+        datasets = make_compressed_sensing_datasets(datasets_cfg, dataset_type, OUTPUT_FOLDER)
 
         results_metrics_list = []
         best_metric = np.inf

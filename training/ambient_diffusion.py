@@ -105,7 +105,7 @@ class FurtherCorrupter(object):
     Defines for a corruption matrix A the corruption A' = BA
     """
     def __init__(self, mode, **kwargs):
-        # mode is the type of corruption, either inpainting or gaussian measurements (see ..generate_dataset/generated_dataset.py)
+        # mode is the type of corruption, either inpainting or compressed_sensing measurements (see ..generate_dataset/generated_dataset.py)
         # different noise schedules might need differnet params
         # => if mode == "smthng" we call the
 
@@ -114,10 +114,10 @@ class FurtherCorrupter(object):
             self.init_operator_func, self.operator_func, self.apply_operator_func = self._init_inpainting(**kwargs)
         elif mode == "inpainting_pw":
             self.init_operator_func, self.operator_func, self.apply_operator_func = self._init_inpainting_pw(**kwargs)
-        elif mode == "gaussian":
-            self.init_operator_func, self.operator_func, self.apply_operator_func = self._init_gaussian(**kwargs)
+        elif mode == "compressed_sensing":
+            self.init_operator_func, self.operator_func, self.apply_operator_func = self._init_compressed_sensing(**kwargs)
         else:
-            raise ValueError(f"Unknown mode '{mode}'. Must be either 'inpainting' or 'gaussian'.")
+            raise ValueError(f"Unknown mode '{mode}'. Must be either 'inpainting' or 'compressed_sensing'.")
 
     def _init_inpainting(self, p=0.5, **kwargs):
         """
@@ -183,9 +183,9 @@ class FurtherCorrupter(object):
 
         return init_operator_func, operator_func, apply_operator_func
 
-    def _init_gaussian(self, m_prime=1, **kwargs):
+    def _init_compressed_sensing(self, m_prime=1, **kwargs):
         """
-        gaussian measurements further corruption: B ~ N(0,I) of shape (batch, m', m).
+        compressed_sensing measurements further corruption: B ~ N(0,I) of shape (batch, m', m).
         A' = B @ A. apply: A' @ x.
         """
         if 'seed' in kwargs.keys():
@@ -240,49 +240,6 @@ class Sampler(object):
             self.sampling_step, self.define_steps = self._init_fixed_mask_sampling(**kwargs)
         else:
             raise ValueError(f"Unknown mode '{mode}'. Must be 'fms'.")
-
-    # def _init_fixed_mask_sampling(self, **kwargs):
-
-    #     def define_steps(n_steps):
-    #         """
-    #         Defines the list of time steps from T=1 down to near 0
-    #         """
-    #         return torch.linspace(1.0, 1e-4, n_steps)
-
-    #     def sampling_step(x_t, A, t_curr, t_next, module, noise_scheduler):
-    #         """
-    #         Reverse SDE step (Euler-Maruyama) following Eq. 3.3.
-
-    #         1. Predict x0: pred_x0 = module(A, x_t, t_curr)
-    #         2. Score: s = (pred_x0 - x_t) / sigma_t^2
-    #         3. Step: x_next = x_t + (sigma_t^2 - sigma_next^2) * s + sqrt(sigma_t^2 - sigma_next^2) * z
-    #         """
-    #         sigma_t = noise_scheduler(t_curr)
-    #         sigma_next = noise_scheduler(t_next)
-
-    #         # Ensure shapes for broadcasting: (batch,) -> (batch, 1)
-    #         if sigma_t.dim() == 0:
-    #             sigma_t = sigma_t.unsqueeze(0)
-    #         if sigma_next.dim() == 0:
-    #             sigma_next = sigma_next.unsqueeze(0)
-
-    #         with torch.no_grad():
-    #             pred_x0 = module(A, x_t, t_curr)
-
-    #         sigma_t_sq = (sigma_t ** 2).unsqueeze(-1)
-    #         sigma_next_sq = (sigma_next ** 2).unsqueeze(-1)
-
-    #         score = (pred_x0 - x_t) / sigma_t_sq
-    #         diff_sq = sigma_t_sq - sigma_next_sq
-
-    #         z = torch.randn_like(x_t)
-    #         noise_scale = torch.sqrt(torch.clamp(diff_sq, min=0.0))
-
-    #         x_next = x_t + diff_sq * score + noise_scale * z
-
-    #         return x_next
-
-    #     return sampling_step, define_steps
 
     def _init_fixed_mask_sampling(self, **kwargs):
 
