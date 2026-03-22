@@ -94,7 +94,9 @@ def launch_experiments(dataset_path, m, m_prime_list,
 
     for method in ["ambient", "naive"]:
         LOGGER.info(f"Running {method} method".upper())
-        for m_prime in m_prime_list:
+        
+        current_m_prime_list = [0.0] if method == "naive" else m_prime_list
+        for m_prime in current_m_prime_list:
             LOGGER.info(f"Using {m_prime} further corruption..")
             further_corrupter = FurtherCorrupter(dataset_type, m_prime=m_prime)
         
@@ -150,8 +152,8 @@ def launch_experiments(dataset_path, m, m_prime_list,
             
     return results, best_so_far, worst_so_far, loss_curves
 
-def make_table(results, metric_list, folder):
-    filename = folder / "results_table.csv"
+def make_table(results, metric_list, folder, dataset_type):
+    filename = folder / f"{dataset_type}_results_table.csv"
 
     df = pd.DataFrame(results)
 
@@ -356,7 +358,7 @@ def main():
                 worst_metric = worst["metrics"][ranking_metric]
 
         LOGGER.info("Saving results table..")
-        make_table(results_metrics_list, metric_list, OUTPUT_FOLDER)
+        make_table(results_metrics_list, metric_list, OUTPUT_FOLDER, dataset_type)
 
         LOGGER.info("Making visualizations..")
         plot_loss_curves(loss_curves, dataset_type, OUTPUT_FOLDER)
