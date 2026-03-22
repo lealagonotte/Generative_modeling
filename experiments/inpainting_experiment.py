@@ -105,9 +105,10 @@ def launch_experiments(dataset_path, p, delta_list,
             if model_type == "mlp":
                 module = Denoiser(data_dim=data_dim, **training_kwargs).to(device)
             elif model_type == "flat_nx2d":
-                n_points = training_kwargs.pop("n_points_per_cloud", 200)
-                module = FlatDenoiserNx2D(n_points=n_points, data_dim=data_dim, **training_kwargs).to(device)
+                training_kwargs["n_points_per_cloud"] = next(iter(train_loader))[0].shape[1]
+                module = FlatDenoiserNx2D(data_dim=data_dim, **training_kwargs).to(device)
             elif model_type == "pointnet_nx2d":
+                training_kwargs["n_points_per_cloud"] = next(iter(train_loader))[0].shape[1]
                 module = PointNetDenoiserNx2D(data_dim=data_dim, **training_kwargs).to(device)
             else:
                 raise ValueError(f"Unknown model type {model_type}")

@@ -30,10 +30,10 @@
     },
     "training":{
         "batch_size": 16,
-        "schedule": "vp",
+        "schedule": "ve",
         "schedule_kwargs": {
-            "beta_min": 0.1,
-            "beta_max": 20.0
+            "sigma_min": 0.01,
+            "sigma_max": 1.0
         },
         "module_kwargs":{
             "model": "flat_nx2d",
