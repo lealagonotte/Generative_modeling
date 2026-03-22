@@ -90,16 +90,24 @@ class FlatDenoiserNx2D(nn.Module):
 
     def forward(self, A, x_t, t):
         batch = x_t.size(0)
-        # Flatten (batch, N, 2) to (batch, N*2)
-        A_flat = A.view(batch, -1)
-        x_t_flat = x_t.view(batch, -1)
         
+        if A.dim() == 3 and x_t.dim() == 2:
+            # Handle Compressed Sensing
+            x_t_proj = torch.bmm(A.transpose(1, 2), x_t.unsqueeze(-1)).squeeze(-1) # (batch, N*2)
+            A_proj = (A ** 2).sum(dim=1) # (batch, N*2)
+            
+            A_flat = A_proj
+            x_t_flat = x_t_proj
+        else:
+            # Flatten (batch, N, 2) to (batch, N*2)
+            A_flat = A.view(batch, -1)
+            x_t_flat = x_t.view(batch, -1)
+            
         t_emb = self.time_embed(t)
         
         x = torch.cat([A_flat, x_t_flat, t_emb], dim=-1)
         out_flat = self.net(x)
         
-        # Unflatten back to (batch, N, 2)
         return out_flat.view(batch, self.n_points, self.data_dim)
 
 
@@ -162,40 +170,44 @@ class PointNetDenoiserNx2D(nn.Module):
         self.relu = nn.ReLU()
 
     def forward(self, A, x_t, t):
-        batch_size, num_points, _ = x_t.shape
+        batch_size = x_t.size(0)
         
-        # 1. Process time embedding
+        if A.dim() == 3 and x_t.dim() == 2:
+            # Handle Compressed Sensing (Measurements to Data Space)
+            x_t_proj = torch.bmm(A.transpose(1, 2), x_t.unsqueeze(-1)).squeeze(-1) # (batch, N*2)
+            A_proj = (A ** 2).sum(dim=1) # (batch, N*2)
+            
+            x_t_reshaped = x_t_proj.view(batch_size, -1, self.data_dim)
+            A_reshaped = A_proj.view(batch_size, -1, self.data_dim)
+            num_points = x_t_reshaped.shape[1]
+            
+            point_inputs = torch.cat([A_reshaped, x_t_reshaped], dim=-1)
+        else:
+            num_points = x_t.shape[1]
+            point_inputs = torch.cat([A, x_t], dim=-1)
+            
         t_emb = self.time_embed(t)  # (batch, time_embed_dim)
-        
-        # Expand time embedding to attach to every point
         t_emb_expanded = t_emb.unsqueeze(1).expand(batch_size, num_points, -1)
         
-        # 2. Concatenate the per-point inputs: (batch, N, in_channels)
-        point_inputs = torch.cat([A, x_t, t_emb_expanded], dim=-1)
+        point_inputs = torch.cat([point_inputs, t_emb_expanded], dim=-1)
         
-        # 3. Transpose for Conv1d: (batch, in_channels, N)
-        # PyTorch Conv1d expects shape (Batch, Channels, Length)
         x = point_inputs.transpose(1, 2)
         
-        # 4. PointNet Encoder
-        x1 = self.relu(self.bn1(self.conv1(x)))      # Local features: (batch, 64, N)
-        x2 = self.relu(self.bn2(self.conv2(x1)))     # (batch, 128, N)
-        x3 = self.relu(self.bn3(self.conv3(x2)))     # (batch, 1024, N)
+        # PointNet Encoder
+        x1 = self.relu(self.bn1(self.conv1(x)))      
+        x2 = self.relu(self.bn2(self.conv2(x1)))     
+        x3 = self.relu(self.bn3(self.conv3(x2)))     
         
-        # 5. Global Max Pooling (Symmetric operation for permutation equivariance)
-        global_feat = torch.max(x3, 2, keepdim=True)[0]  # (batch, 1024, 1)
+        # Global Max Pooling
+        global_feat = torch.max(x3, 2, keepdim=True)[0]  
+        global_feat_expanded = global_feat.expand(-1, -1, num_points)  
         
-        # 6. Expand global features to match sequence length
-        global_feat_expanded = global_feat.expand(-1, -1, num_points)  # (batch, 1024, N)
+        combined_features = torch.cat([x1, global_feat_expanded], dim=1) 
         
-        # 7. Concatenate local and global features
-        combined_features = torch.cat([x1, global_feat_expanded], dim=1) # (batch, 1088, N)
-        
-        # 8. PointNet Decoder
+        # PointNet Decoder
         x4 = self.relu(self.bn4(self.conv4(combined_features)))
         x5 = self.relu(self.bn5(self.conv5(x4)))
         x6 = self.relu(self.bn6(self.conv6(x5)))
-        out = self.conv7(x6)  # (batch, data_dim, N)
+        out = self.conv7(x6) 
         
-        # 9. Transpose back to match original shape: (batch, N, data_dim)
         return out.transpose(1, 2)
