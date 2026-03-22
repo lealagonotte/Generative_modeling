@@ -230,7 +230,7 @@ class FurtherCorrupter(object):
             # further_A: (batch, m', d), x: (batch, d)
             # Currently only supported for 2D inputs, not Nx2D
             if x.dim() > 2:
-                raise NotImplementedError("Gaussian corruption not supported for Nx2D inputs yet.")
+                return torch.bmm(further_A, x.reshape(x.shape[0], -1, 1)).squeeze(-1)
             return torch.bmm(further_A, x.unsqueeze(-1)).squeeze(-1)
 
         return init_operator_func, operator_func, apply_operator_func
