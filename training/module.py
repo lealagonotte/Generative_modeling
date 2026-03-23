@@ -52,7 +52,10 @@ class Denoiser(nn.Module):
     def forward(self, A, x_t, t):
         if A.dim() == 3 and x_t.dim() == 2:
             # Compressed sensing: project from measurement space to data space
+            # Use pseudoinverse-style normalization: A^+ y = A^T y / ||A||^2_F
             x_t_proj = torch.bmm(A.transpose(1, 2), x_t.unsqueeze(-1)).squeeze(-1)  # (batch, d)
+            A_norm_sq = (A ** 2).sum(dim=(1, 2), keepdim=False).unsqueeze(-1).clamp(min=1e-8)
+            x_t_proj = x_t_proj / A_norm_sq
             A_proj = (A ** 2).sum(dim=1)  # (batch, d)
             A = A_proj
             x_t = x_t_proj
@@ -99,21 +102,24 @@ class FlatDenoiserNx2D(nn.Module):
         
         if A.dim() == 3 and x_t.dim() == 2:
             # Handle Compressed Sensing
+            # Use pseudoinverse-style normalization: A^+ y = A^T y / ||A||^2_F
             x_t_proj = torch.bmm(A.transpose(1, 2), x_t.unsqueeze(-1)).squeeze(-1) # (batch, N*2)
+            A_norm_sq = (A ** 2).sum(dim=(1, 2), keepdim=False).unsqueeze(-1).clamp(min=1e-8)
+            x_t_proj = x_t_proj / A_norm_sq
             A_proj = (A ** 2).sum(dim=1) # (batch, N*2)
-            
+
             A_flat = A_proj
             x_t_flat = x_t_proj
         else:
             # Flatten (batch, N, 2) to (batch, N*2)
             A_flat = A.view(batch, -1)
             x_t_flat = x_t.view(batch, -1)
-            
+
         t_emb = self.time_embed(t)
-        
+
         x = torch.cat([A_flat, x_t_flat, t_emb], dim=-1)
         out_flat = self.net(x)
-        
+
         return out_flat.view(batch, self.n_points, self.data_dim)
 
 
@@ -180,9 +186,12 @@ class PointNetDenoiserNx2D(nn.Module):
         
         if A.dim() == 3 and x_t.dim() == 2:
             # Handle Compressed Sensing (Measurements to Data Space)
+            # Use pseudoinverse-style normalization: A^+ y = A^T y / ||A||^2_F
             x_t_proj = torch.bmm(A.transpose(1, 2), x_t.unsqueeze(-1)).squeeze(-1) # (batch, N*2)
+            A_norm_sq = (A ** 2).sum(dim=(1, 2), keepdim=False).unsqueeze(-1).clamp(min=1e-8)
+            x_t_proj = x_t_proj / A_norm_sq
             A_proj = (A ** 2).sum(dim=1) # (batch, N*2)
-            
+
             x_t_reshaped = x_t_proj.view(batch_size, -1, self.data_dim)
             A_reshaped = A_proj.view(batch_size, -1, self.data_dim)
             num_points = x_t_reshaped.shape[1]
