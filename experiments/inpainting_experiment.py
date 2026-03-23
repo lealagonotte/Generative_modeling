@@ -8,6 +8,7 @@ import numpy as np
 
 from pathlib import Path
 
+import torch
 from tqdm.auto import tqdm
 from torch import from_numpy
 from torch import device as torch_device
@@ -61,7 +62,7 @@ def compute_metrics(dataset_path, metric_list, sampler, n_samples, n_steps,
 
     with open(dataset_path, "rb") as f:
         ref_data = pkl.load(f)
-    X_ref = from_numpy(ref_data["X"]).to(torch.float32)
+    X_ref = torch.from_numpy(ref_data["X"]).to(torch.float32)
 
     metric_results = {}
     for metric in metric_list:
