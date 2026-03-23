@@ -50,6 +50,12 @@ class Denoiser(nn.Module):
         self.net = nn.Sequential(*layers)
 
     def forward(self, A, x_t, t):
+        if A.dim() == 3 and x_t.dim() == 2:
+            # Compressed sensing: project from measurement space to data space
+            x_t_proj = torch.bmm(A.transpose(1, 2), x_t.unsqueeze(-1)).squeeze(-1)  # (batch, d)
+            A_proj = (A ** 2).sum(dim=1)  # (batch, d)
+            A = A_proj
+            x_t = x_t_proj
         t_emb = self.time_embed(t)
         x = torch.cat([A, x_t, t_emb], dim=-1)
         return self.net(x)
