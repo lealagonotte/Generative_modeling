@@ -151,7 +151,7 @@ class PointNetDenoiserNx2D(nn.Module):
     Output:
         predicted x0 : (batch, N, data_dim)
     """
-    def __init__(self, data_dim=2, time_embed_dim=32):
+    def __init__(self, data_dim=2, time_embed_dim=32, **kwargs):
         super().__init__()
         self.data_dim = data_dim
         self.time_embed = SinusoidalTimeEmbedding(time_embed_dim)
