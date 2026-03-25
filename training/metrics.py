@@ -180,8 +180,10 @@ def chamfer_distance(
     Returns:
         float : Average Chamfer distance across the batch.
     """
-    if P1.dim() != 3 or P2.dim() != 3:
-        raise ValueError(f"Chamfer distance expects 3D tensors (batch, N, d). Got {P1.dim()}D and {P2.dim()}D.")
+    if P1.dim() != 3:
+        P1 = P1.unsqueeze(0)
+    if P2.dim() != 3:
+        P2 = P2.unsqueeze(0)
 
     if P1.shape[2] != P2.shape[2]:
         raise ValueError(f"P1 and P2 must have the same dimension d. Got {P1.shape[2]} and {P2.shape[2]}.")
