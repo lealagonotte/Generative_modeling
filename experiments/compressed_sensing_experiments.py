@@ -116,6 +116,14 @@ def launch_experiments(dataset_path, m, m_prime_list,
             model_type = training_kwargs.pop("model", "mlp")
             data_dim = training_kwargs.pop("data_dim", 2)
             
+            # Compute effective measurement dimension after further corruption
+            if dataset_type == "compressed_sensing" and m_actual is not None:
+                if method == "naive" or m_prime == 0:
+                    m_eff = m_actual
+                else:
+                    m_eff = int(m_prime * m_actual) if 0 < m_prime < 1 else int(m_prime)
+                training_kwargs["measurement_dim"] = m_eff
+
             if model_type == "mlp":
                 module = Denoiser(data_dim=data_dim, **training_kwargs).to(device)
             elif model_type == "flat_nx2d":

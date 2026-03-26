@@ -214,7 +214,10 @@ def main():
         raise ValueError(f"Unknown dataset corruption type {dataset_type}. Must be eitehr 'inpainting' or 'compressed_sensing'.")
     
     if args.model == "mlp":
-        module = Denoiser(data_dim=args.data_dim).to(device)
+        if dataset_type == "compressed_sensing":
+            module = Denoiser(data_dim=args.data_dim, measurement_dim=m_actual).to(device)
+        else:
+            module = Denoiser(data_dim=args.data_dim).to(device)
     elif args.model == "flat_nx2d":
         assert args.n_points_per_cloud is not None, "n_points_per_cloud must be set for flat_nx2d"
         module = FlatDenoiserNx2D(n_points=args.n_points_per_cloud, data_dim=args.data_dim).to(device)
