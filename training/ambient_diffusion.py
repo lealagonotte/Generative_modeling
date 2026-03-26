@@ -199,20 +199,27 @@ class FurtherCorrupter(object):
 
     def _init_compressed_sensing(self, m_prime=1, **kwargs):
         """
-        compressed_sensing measurements further corruption: B ~ N(0,I) of shape (batch, m', m).
-        A' = B @ A. apply: A' @ x.
+        Compressed sensing further corruption following Corollary A.2 of Ambient Diffusion.
+        
+        The further corruption Ã is constructed by deleting m_prime rows from A at random.
+        This preserves the theoretical guarantee: E[A^T A | Ã] = Ã^T Ã + I_n (full rank).
+ 
+        Args:
+            m_prime: number of rows to delete from A (default 1, as in the paper).
+                     If 0 < m_prime < 1, interpreted as a fraction of m.
+                     If m_prime == 0, no further corruption (naive baseline).
         """
         if 'seed' in kwargs.keys():
             seed = kwargs['seed']
         else:
             seed = 1234
         rng = np.random.default_rng(seed + 1) 
-
+ 
         if 'm' in kwargs.keys():
             m = kwargs["m"]
         else:
             m = 2
-
+ 
         def init_operator_func(shape, device):
             X = np.zeros(shape, dtype=np.float32)
             _, A = compressed_sensing_corruption(X, 
@@ -221,22 +228,21 @@ class FurtherCorrupter(object):
             return torch.from_numpy(A).to(device)
         
         def operator_func(A):
-            # A: (batch, m, d)
             batch, m, d = A.shape
-            if m_prime == 0 or m_prime == 0.0: # naive = no further corruption
+            if m_prime == 0 or m_prime == 0.0:
                 return A
             
-            m_p = int(m_prime * m) if (m_prime > 0 and m_prime < 1) else int(m_prime)
-            B = torch.randn(batch, m_p, m, device=A.device)
-            return torch.bmm(B, A)  # (batch, m_p, d)
-
+            n_zero = int(m_prime * m) if (0 < m_prime < 1) else int(m_prime)
+            A_tilde = A.clone()
+            A_tilde[:, -n_zero:, :] = 0.0
+            return A_tilde  # same shape (batch, m, d)
+ 
         def apply_operator_func(further_A, x):
-            # further_A: (batch, m', d), x: (batch, d)
-            # Currently only supported for 2D inputs, not Nx2D
+            # further_A: (batch, m_kept, d), x: (batch, d) or (batch, N*d)
             if x.dim() > 2:
                 return torch.bmm(further_A, x.reshape(x.shape[0], -1, 1)).squeeze(-1)
             return torch.bmm(further_A, x.unsqueeze(-1)).squeeze(-1)
-
+ 
         return init_operator_func, operator_func, apply_operator_func
 
     def init_operator(self, shape, device):
